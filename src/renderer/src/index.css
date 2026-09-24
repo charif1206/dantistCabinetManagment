@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: #c4c6cf;
+  }
+
+  body {
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom clinical scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c4c6cf;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #74777f;
+}
+
+/* Toast System Animations */
+@keyframes toastSlideIn {
+  0% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toastFadeOut {
+  0% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(40px) scale(0.95);
+    opacity: 0;
+  }
+}
+
+@keyframes toastProgress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.animate-toast-in {
+  animation: toastSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-toast-out {
+  animation: toastFadeOut 0.25s ease-in forwards;
+}
+
+/* Print Styles for Algerian Dental Clinic Documents (Prescriptions, Invoices, Dossier Patient) */
+@media print {
+  /* Ensure clean white background and crisp text */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide app navigation chrome, sidebars, headers, action buttons, notifications */
+  aside,
+  header,
+  nav,
+  .print\:hidden,
+  .print-hidden,
+  #toast-container {
+    display: none !important;
+  }
+
+  /* Reset fixed modal overlays so sheets print in natural page flow */
+  .fixed.inset-0 {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Printable sheets styling */
+  #printable-ordonnance,
+  #printable-invoice,
+  #printable-patient-file {
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 auto !important;
+    padding: 8mm 12mm !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  #printable-ordonnance {
+    max-width: 148mm; /* A5 standard width */
+  }
+
+  #printable-invoice,
+  #printable-patient-file {
+    max-width: 210mm; /* A4 standard width */
+  }
+
+  @page {
+    size: auto;
+    margin: 8mm 10mm;
+  }
+}
+
+
