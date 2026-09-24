@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { Patient, Treatment, ClinicalNote, Prescription, Invoice } from '@shared/types'
+import { Patient, Treatment, ClinicalNote, Prescription, Invoice, MedicalAntecedentsRecord } from '@shared/types'
 import { clinicalService } from '../../services/clinicalService'
 import { billingService } from '../../services/billingService'
+import { patientService } from '../../services/patientService'
+import { evaluateClinicalAlerts } from './medicalAlertUtils'
 
 import { printService } from '../../services/printService'
 import { useToast } from '../../context/ToastContext'
@@ -20,22 +22,25 @@ export default function PrintablePatientFile({
   const [notes, setNotes] = useState<ClinicalNote[]>([])
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [medicalHistory, setMedicalHistory] = useState<MedicalAntecedentsRecord | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
     const fetchData = async (): Promise<void> => {
       try {
-        const [trts, nts, prs, invs] = await Promise.all([
+        const [trts, nts, prs, invs, hist] = await Promise.all([
           clinicalService.getTreatments(patient.id),
           clinicalService.getClinicalNotes(patient.id),
           clinicalService.getPrescriptions(patient.id),
-          billingService.getInvoices(patient.id)
+          billingService.getInvoices(patient.id),
+          patientService.getMedicalHistory(patient.id)
         ])
         setTreatments(trts || [])
         setNotes(nts || [])
         setPrescriptions(prs || [])
         setInvoices(invs || [])
+        setMedicalHistory(hist)
       } catch (err) {
         console.error('Failed to load patient records for print view:', err)
       } finally {
@@ -194,18 +199,103 @@ export default function PrintablePatientFile({
               </div>
             </div>
 
-            {/* Medical Alerts Banner */}
-            {patient.medicalAlerts ? (
-              <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex items-center gap-2">
-                <span className="material-symbols-outlined text-sm text-rose-600">warning</span>
-                <span>ALERTES MÉDICALES / ALLERGIES : {patient.medicalAlerts}</span>
-              </div>
-            ) : (
-              <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-xs text-emerald-600">check_circle</span>
-                <span>Aucune allergie ou contre-indication médicale signalée.</span>
-              </div>
-            )}
+            {/* Medical Alerts Banner & Questionnaire Summary */}
+            {(() => {
+              const alerts = evaluateClinicalAlerts(medicalHistory, patient.medicalAlerts)
+              return (
+                <div className="space-y-2">
+                  {alerts.length > 0 ? (
+                    <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex flex-wrap items-center gap-2">
+                      <span className="material-symbols-outlined text-sm text-rose-600">warning</span>
+                      <span className="uppercase">Alertes Sécurité Clinique :</span>
+                      {alerts.map((a) => (
+                        <span
+                          key={a.id}
+                          className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-600 text-white"
+                        >
+                          {a.title}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-xs text-emerald-600">check_circle</span>
+                      <span>Aucune allergie ou contre-indication médicale majeure signalée.</span>
+                    </div>
+                  )}
+
+                  {/* Complete Systemic Medical History Questionnaire Breakdown */}
+                  {medicalHistory && (
+                    <div className="border border-slate-300 rounded-lg p-3 bg-white space-y-2 text-[11px]">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+                        <span className="font-bold text-slate-800 uppercase tracking-wider text-[10px]">
+                          Bilan Médical Systémique & Antécédents par Appareils
+                        </span>
+                        <span className="font-bold px-2 py-0.2 rounded text-[10px] bg-slate-100 text-slate-700">
+                          Niveau de Risque : {medicalHistory.generalRiskLevel}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+                        <div>
+                          <strong className="text-slate-700">1. Cardio :</strong>{' '}
+                          <span className={medicalHistory.cardioChecklist?.length ? 'text-rose-700 font-semibold' : 'text-slate-500'}>
+                            {medicalHistory.cardioChecklist?.length ? medicalHistory.cardioChecklist.join(', ') : 'R.A.S (Sain)'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <strong className="text-slate-700">2. Hématologie :</strong>{' '}
+                          <span className={medicalHistory.hematologyChecklist?.length ? 'text-red-700 font-bold' : 'text-slate-500'}>
+                            {medicalHistory.hematologyChecklist?.length ? medicalHistory.hematologyChecklist.join(', ') : 'R.A.S (Normale)'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <strong className="text-slate-700">3. Digestif/Foie :</strong>{' '}
+                          <span className={medicalHistory.gastroChecklist?.length ? 'text-amber-700 font-semibold' : 'text-slate-500'}>
+                            {medicalHistory.gastroChecklist?.length ? medicalHistory.gastroChecklist.join(', ') : 'R.A.S'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <strong className="text-slate-700">4. Respiratoire :</strong>{' '}
+                          <span className={medicalHistory.respiratoryChecklist?.length ? 'text-cyan-800 font-semibold' : 'text-slate-500'}>
+                            {medicalHistory.respiratoryChecklist?.length ? medicalHistory.respiratoryChecklist.join(', ') : 'R.A.S'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <strong className="text-slate-700">5. Endocrino/Diabète :</strong>{' '}
+                          <span className={medicalHistory.endocrineChecklist?.length ? 'text-blue-800 font-semibold' : 'text-slate-500'}>
+                            {medicalHistory.endocrineChecklist?.length ? medicalHistory.endocrineChecklist.join(', ') : 'R.A.S'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <strong className="text-slate-700">6. Allergies :</strong>{' '}
+                          <span className={medicalHistory.allergiesChecklist?.length ? 'text-purple-800 font-bold' : 'text-slate-500'}>
+                            {medicalHistory.allergiesChecklist?.length ? medicalHistory.allergiesChecklist.join(', ') : 'Aucune'}
+                          </span>
+                        </div>
+
+                        {medicalHistory.isPregnantOrNursing && (
+                          <div className="col-span-2 text-pink-700 font-bold">
+                            <strong>Statut Physiologique :</strong> Grossesse en cours {medicalHistory.pregnancyMonth ? `(${medicalHistory.pregnancyMonth}ème mois)` : ''} / Allaitement
+                          </div>
+                        )}
+
+                        {medicalHistory.doctorNotes && (
+                          <div className="col-span-2 pt-1 border-t border-slate-100 text-slate-800">
+                            <strong>Consignes du Praticien :</strong> {medicalHistory.doctorNotes}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
 
           {/* Financial Summary */}

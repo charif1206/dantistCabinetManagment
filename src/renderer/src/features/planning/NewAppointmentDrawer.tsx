@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Appointment, Patient } from '@shared/types'
 import { appointmentService } from '../../services/appointmentService'
 import { patientService } from '../../services/patientService'
+import { waitingRoomService } from '../../services/waitingRoomService'
 import { validateFutureDateTime } from '../../utils/validators'
 import { useToast } from '../../context/ToastContext'
 import ConflictAlertModal from './ConflictAlertModal'
@@ -30,6 +31,8 @@ export default function NewAppointmentDrawer({
   const [patientSearch, setPatientSearch] = useState<string>('')
   const [manualName, setManualName] = useState<string>('Yacine Benali')
   const [manualPhone, setManualPhone] = useState<string>('0555123456')
+  const [putInWaitingRoom, setPutInWaitingRoom] = useState(false)
+  const [isUrgentFastTrack, setIsUrgentFastTrack] = useState(false)
 
   const [dateTime, setDateTime] = useState<string>(() => {
     if (initialDate) {
@@ -98,7 +101,7 @@ export default function NewAppointmentDrawer({
       const patientPhone = selectedPatient ? selectedPatient.phone : manualPhone.trim()
       const patientId = selectedPatientId || 'quick_patient'
 
-      await appointmentService.saveAppointment({
+      const savedApt = await appointmentService.saveAppointment({
         patientId,
         patientName,
         patientPhone,
@@ -110,7 +113,27 @@ export default function NewAppointmentDrawer({
         notes
       })
 
-      showToast(`Rendez-vous confirmé pour ${patientName} le ${dateTime.replace('T', ' à ')}`, 'success')
+      if (putInWaitingRoom) {
+        await waitingRoomService.addToWaitingQueue({
+          patientId,
+          patientName,
+          patientPhone,
+          appointmentId: savedApt.id,
+          status: 'WAITING',
+          isUrgent: isUrgentFastTrack ? 1 : 0,
+          priorityNote: isUrgentFastTrack
+            ? 'Urgence dentaire (RDV Rapide)'
+            : 'Admis immédiatement en salle d’attente',
+          assignedDentist: dentistName
+        })
+      }
+
+      showToast(
+        putInWaitingRoom
+          ? `Rendez-vous confirmé et ${patientName} admis en salle d'attente !`
+          : `Rendez-vous confirmé pour ${patientName} le ${dateTime.replace('T', ' à ')}`,
+        'success'
+      )
       onSuccess()
       onClose()
     } catch (err) {
@@ -132,15 +155,17 @@ export default function NewAppointmentDrawer({
     }
     setPatientError('')
 
-    // 2. Validate Future Date & Time (Past Date Blocking)
-    const dateRes = validateFutureDateTime(dateTime)
-    if (!dateRes.isValid) {
-      setDateTimeError(dateRes.error || "La date et l'heure du rendez-vous doivent être strictement ultérieures au moment actuel.")
-      showToast(
-        'Impossible de programmer un rendez-vous dans le passé. Veuillez choisir une date et heure future.',
-        'error'
-      )
-      return
+    // 2. Validate Future Date & Time (Past Date Blocking - bypass only if immediate walk-in)
+    if (!putInWaitingRoom) {
+      const dateRes = validateFutureDateTime(dateTime)
+      if (!dateRes.isValid) {
+        setDateTimeError(dateRes.error || "La date et l'heure du rendez-vous doivent être strictement ultérieures au moment actuel.")
+        showToast(
+          'Impossible de programmer un rendez-vous dans le passé. Veuillez choisir une date et heure future.',
+          'error'
+        )
+        return
+      }
     }
     setDateTimeError('')
 
@@ -401,6 +426,52 @@ export default function NewAppointmentDrawer({
               placeholder="Ex: Patient anxieux, antécédents d'allergie, prévoir anesthésie..."
               className="w-full p-3 rounded-xl bg-surface border border-outline-variant text-xs text-on-surface resize-none focus:outline-none focus:border-secondary"
             />
+          </div>
+
+          {/* Waiting Room & Fast Track Options */}
+          <div className="p-3 bg-surface-container rounded-2xl border border-outline-variant/60 space-y-2.5">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={putInWaitingRoom}
+                onChange={(e) => {
+                  setPutInWaitingRoom(e.target.checked)
+                  if (e.target.checked) {
+                    const now = new Date()
+                    const year = now.getFullYear()
+                    const month = String(now.getMonth() + 1).padStart(2, '0')
+                    const day = String(now.getDate()).padStart(2, '0')
+                    const hours = String(now.getHours()).padStart(2, '0')
+                    const mins = String(now.getMinutes()).padStart(2, '0')
+                    setDateTime(`${year}-${month}-${day}T${hours}:${mins}`)
+                    setDateTimeError('')
+                  }
+                }}
+                className="h-4 w-4 rounded text-secondary focus:ring-secondary/40 cursor-pointer"
+              />
+              <div>
+                <span className="text-xs font-bold text-on-surface block">
+                  Mettre immédiatement en salle d'attente (Walk-in / Patient présent)
+                </span>
+                <span className="text-[10px] text-on-surface-variant block">
+                  Crée le rendez-vous et ajoute le patient à la file active de la salle d'attente
+                </span>
+              </div>
+            </label>
+
+            {putInWaitingRoom && (
+              <label className="flex items-center gap-2 pl-6 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isUrgentFastTrack}
+                  onChange={(e) => setIsUrgentFastTrack(e.target.checked)}
+                  className="h-4 w-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-rose-700">
+                  Marquer comme rendez-vous rapide / prioritaire (Urgence dentaire)
+                </span>
+              </label>
+            )}
           </div>
 
           {/* Submit */}

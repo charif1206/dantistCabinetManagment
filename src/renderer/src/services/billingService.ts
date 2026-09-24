@@ -2,9 +2,9 @@ import { MedicalAct, Invoice, Payment, Treatment } from '@shared/types'
 import { getElectronApi } from './apiClient'
 
 export const billingService = {
-  async getMedicalActs(): Promise<MedicalAct[]> {
+  async getMedicalActs(category?: string, search?: string): Promise<MedicalAct[]> {
     const api = getElectronApi()
-    return await api.getMedicalActs()
+    return await api.getMedicalActs(category, search)
   },
 
   async saveMedicalAct(

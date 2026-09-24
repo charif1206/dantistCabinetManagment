@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { Appointment, Patient } from '@shared/types'
 import { appointmentService } from '../../services/appointmentService'
 import { patientService } from '../../services/patientService'
@@ -12,6 +12,8 @@ import {
   STATUS_CONFIG
 } from '../../utils/appointmentTransitions'
 import NewAppointmentDrawer from './NewAppointmentDrawer'
+import CurrentTimeIndicator from './CurrentTimeIndicator'
+import ConflictAlertModal from './ConflictAlertModal'
 
 export type CalendarViewMode = 'MONTH' | 'WEEK' | 'DAY'
 
@@ -23,7 +25,8 @@ const CLINIC_DENTISTS = [
 
 const HOURS = [
   '08:00', '09:00', '10:00', '11:00', '12:00',
-  '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'
+  '13:00', '14:00', '15:00', '16:00', '17:00',
+  '18:00', '19:00', '20:00', '21:00', '22:00'
 ]
 
 const ALGERIAN_WEEKDAYS = [
@@ -61,6 +64,8 @@ export default function FullCalendarView(): JSX.Element {
   const [editNotes, setEditNotes] = useState<string>('Rendez-vous confirmé par téléphone avec le patient')
   const [editDateTimeError, setEditDateTimeError] = useState<string>('')
   const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false)
+  const [conflictingEditAppointment, setConflictingEditAppointment] = useState<Appointment | null>(null)
+  const weekGridRef = useRef<HTMLDivElement | null>(null)
 
   // Load appointments from backend
   const loadAppointments = async (): Promise<void> => {
@@ -193,7 +198,7 @@ export default function FullCalendarView(): JSX.Element {
   }
 
   // Save Edit / Reschedule with Validation & Conflict Guard
-  const handleSaveEdit = async (): Promise<void> => {
+  const handleSaveEdit = async (force: boolean = false): Promise<void> => {
     if (!selectedAppointment) return
 
     // 1. Past date check
@@ -220,7 +225,8 @@ export default function FullCalendarView(): JSX.Element {
       return newStart < aEnd && newEnd > aStart
     })
 
-    if (conflict) {
+    if (!force && conflict) {
+      setConflictingEditAppointment(conflict)
       showToast(`Attention : Conflit d'horaire pour ${editDentist} avec le rendez-vous de ${conflict.patientName}`, 'warning')
       return
     }
@@ -250,6 +256,7 @@ export default function FullCalendarView(): JSX.Element {
       await loadAppointments()
       setSelectedAppointment(updated)
       setIsEditingAppointment(false)
+      setConflictingEditAppointment(null)
       showToast('Rendez-vous mis à jour avec succès !', 'success')
     } catch (err) {
       console.error('Failed to save appointment edit:', err)
@@ -350,6 +357,8 @@ export default function FullCalendarView(): JSX.Element {
   }, [currentDate, todayIso])
 
   const renderWeekView = (): JSX.Element => {
+    const todayIndex = weekDays.findIndex((wd) => wd.isToday)
+
     return (
       <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/60 shadow-xs overflow-hidden flex flex-col flex-1 min-h-[620px]">
         {/* Week Day Header */}
@@ -379,11 +388,26 @@ export default function FullCalendarView(): JSX.Element {
         </div>
 
         {/* Week Hours Grid */}
-        <div className="flex-1 overflow-y-auto divide-y divide-outline-variant/30">
+        <div
+          ref={weekGridRef}
+          className="flex-1 overflow-y-auto divide-y divide-outline-variant/30 relative scroll-smooth"
+        >
+          {/* Live Current Time Moving Red Indicator */}
+          <CurrentTimeIndicator
+            isToday={todayIndex !== -1}
+            dayIndex={todayIndex}
+            totalDays={6}
+            labelWidth={70}
+            startHour={8}
+            endHour={22}
+            slotHeight={64}
+            containerRef={weekGridRef}
+          />
+
           {HOURS.map((hour) => {
             const hourInt = parseInt(hour.split(':')[0], 10)
             return (
-              <div key={hour} className="grid grid-cols-[70px_repeat(6,1fr)] min-h-[64px]">
+              <div key={hour} className="grid grid-cols-[70px_repeat(6,1fr)] min-h-[64px] h-[64px]">
                 {/* Time Label */}
                 <div className="py-2 pr-2 text-right text-[11px] font-mono text-outline border-r border-outline-variant/40 select-none bg-surface-container-lowest/50">
                   {hour}
@@ -630,23 +654,49 @@ export default function FullCalendarView(): JSX.Element {
         </div>
 
         {/* Day Timeline */}
-        <div className="p-6 flex-1 overflow-y-auto space-y-3">
+        <div className="p-6 flex-1 overflow-y-auto space-y-3 scroll-smooth">
           {HOURS.map((hour) => {
             const hourInt = parseInt(hour.split(':')[0], 10)
+            const isToday = selectedIso === todayIso
+            const currentHour = new Date().getHours()
+            const isCurrentSlot = isToday && currentHour === hourInt
+
             const slotApts = dayAppointments.filter((a) => {
               const aHour = parseInt(a.dateTime.split('T')[1]?.slice(0, 2) || '0', 10)
               return aHour === hourInt
             })
 
             return (
-              <div key={hour} className="flex items-start gap-4 p-3 rounded-xl border border-outline-variant/40 bg-surface/50 hover:bg-surface transition-all">
+              <div
+                key={hour}
+                className={`flex items-start gap-4 p-3 rounded-xl border transition-all ${
+                  isCurrentSlot
+                    ? 'border-[#EF4444] bg-red-500/5 ring-1 ring-red-400 shadow-xs'
+                    : 'border-outline-variant/40 bg-surface/50 hover:bg-surface'
+                }`}
+              >
                 {/* Hour Col */}
-                <div className="w-16 font-mono font-bold text-sm text-secondary shrink-0 pt-1">
-                  {hour}
+                <div className="w-16 font-mono font-bold text-sm text-secondary shrink-0 pt-1 flex flex-col items-start">
+                  <span>{hour}</span>
+                  {isCurrentSlot && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-sans font-extrabold text-[#EF4444] mt-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444] animate-ping" />
+                      Actuel
+                    </span>
+                  )}
                 </div>
 
                 {/* Content */}
                 <div className="flex-1 space-y-2">
+                  {isCurrentSlot && (
+                    <div className="flex items-center gap-2 py-0.5 mb-1 text-[#EF4444]">
+                      <span className="w-2 h-2 rounded-full bg-[#EF4444] animate-pulse" />
+                      <div className="h-[2px] flex-1 bg-[#EF4444] shadow-[0_0_6px_rgba(239,68,68,0.7)]" />
+                      <span className="font-mono text-[10px] font-bold bg-[#EF4444] text-white px-2 py-0.2 rounded-full">
+                        {new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  )}
                   {slotApts.length === 0 ? (
                     <button
                       onClick={() => handleSlotClick(selectedIso, hour)}
@@ -1144,7 +1194,7 @@ export default function FullCalendarView(): JSX.Element {
               </button>
               <button
                 disabled={isSavingEdit}
-                onClick={handleSaveEdit}
+                onClick={() => handleSaveEdit(false)}
                 className="px-4 py-2 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
               >
                 {isSavingEdit ? 'Enregistrement...' : 'Enregistrer'}
@@ -1162,6 +1212,21 @@ export default function FullCalendarView(): JSX.Element {
           onSuccess={() => {
             loadAppointments()
             showToast('Nouveau rendez-vous enregistré !', 'success')
+          }}
+        />
+      )}
+
+      {/* Conflict Alert Modal during Edit */}
+      {conflictingEditAppointment && (
+        <ConflictAlertModal
+          conflictingAppointment={conflictingEditAppointment}
+          newTime={editDateTime}
+          onForceSave={() => handleSaveEdit(true)}
+          onModifyTime={() => setConflictingEditAppointment(null)}
+          onCancel={() => setConflictingEditAppointment(null)}
+          onAcceptSuggestedTime={(suggestedIso) => {
+            setEditDateTime(suggestedIso)
+            setConflictingEditAppointment(null)
           }}
         />
       )}

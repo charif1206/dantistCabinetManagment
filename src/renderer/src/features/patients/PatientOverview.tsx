@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Patient } from '@shared/types'
+import { Patient, MedicalAntecedentsRecord } from '@shared/types'
 import { useNavigation } from '../../context/NavigationContext'
+import { patientService } from '../../services/patientService'
 import PatientTimeline from './PatientTimeline'
 import DentalChart from '../dentalChart/DentalChart'
 import ClinicalNotesTab from '../clinicalNotes/ClinicalNotesTab'
@@ -8,6 +9,11 @@ import PrescriptionBuilder from '../prescriptions/PrescriptionBuilder'
 import NewVisitModal from './NewVisitModal'
 import EditPatientModal from './EditPatientModal'
 import PrintablePatientFile from './PrintablePatientFile'
+import MedicalHistoryModal from './MedicalHistoryModal'
+import PatientProthesisTab from './PatientProthesisTab'
+import PatientDevisTab from './PatientDevisTab'
+import PatientBilansTab from './PatientBilansTab'
+import { evaluateClinicalAlerts } from './medicalAlertUtils'
 
 interface PatientOverviewProps {
   patient: Patient
@@ -15,7 +21,7 @@ interface PatientOverviewProps {
   onPatientUpdated: () => void
 }
 
-type TabType = 'overview' | 'chart' | 'notes' | 'prescriptions'
+type TabType = 'overview' | 'chart' | 'notes' | 'prescriptions' | 'prothesis' | 'devis' | 'bilans'
 
 export default function PatientOverview({
   patient,
@@ -28,12 +34,24 @@ export default function PatientOverview({
       ? currentLocation.patientSubTab
       : 'overview'
   const [patientData, setPatientData] = useState<Patient>(patient)
+  const [medicalHistory, setMedicalHistory] = useState<MedicalAntecedentsRecord | null>(null)
   const [showNewVisitModal, setShowNewVisitModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showPrintFileModal, setShowPrintFileModal] = useState(false)
+  const [showMedicalHistoryModal, setShowMedicalHistoryModal] = useState(false)
+
+  const loadMedicalHistory = async (patientId: string): Promise<void> => {
+    try {
+      const hist = await patientService.getMedicalHistory(patientId)
+      setMedicalHistory(hist)
+    } catch (err) {
+      console.warn('Could not load medical history', err)
+    }
+  }
 
   useEffect(() => {
     setPatientData(patient)
+    loadMedicalHistory(patient.id)
   }, [patient])
 
   useEffect(() => {
@@ -49,6 +67,8 @@ export default function PatientOverview({
     const currentYear = new Date().getFullYear()
     return `${currentYear - birthYear} ans`
   }
+
+  const clinicalAlerts = evaluateClinicalAlerts(medicalHistory, patientData.medicalAlerts)
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-surface text-on-surface overflow-y-auto">
@@ -77,7 +97,7 @@ export default function PatientOverview({
             </div>
 
             <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-lg font-bold text-on-surface">
                   {patientData.firstName} {patientData.lastName}
                 </h1>
@@ -87,6 +107,21 @@ export default function PatientOverview({
                 {patientData.bloodGroup && (
                   <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-error-container text-error">
                     {patientData.bloodGroup}
+                  </span>
+                )}
+                {medicalHistory?.generalRiskLevel && medicalHistory.generalRiskLevel !== 'LOW' && (
+                  <span
+                    onClick={() => setShowMedicalHistoryModal(true)}
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-md cursor-pointer uppercase ${
+                      medicalHistory.generalRiskLevel === 'CRITICAL'
+                        ? 'bg-rose-600 text-white animate-pulse'
+                        : medicalHistory.generalRiskLevel === 'HIGH'
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-amber-500 text-white'
+                    }`}
+                    title="Niveau de risque clinique général"
+                  >
+                    Risque {medicalHistory.generalRiskLevel}
                   </span>
                 )}
               </div>
@@ -114,25 +149,50 @@ export default function PatientOverview({
                   </span>
                 )}
               </div>
+
+              {/* Pulsing Clinical Risk Badges in Patient Header */}
+              {clinicalAlerts.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                  {clinicalAlerts.map((alert) => (
+                    <button
+                      key={alert.id}
+                      type="button"
+                      onClick={() => setShowMedicalHistoryModal(true)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-bold shadow-xs transition-transform hover:scale-105 cursor-pointer ${
+                        alert.badgeBg
+                      } ${alert.isPulsing ? 'animate-pulse' : ''}`}
+                      title={`${alert.title} · Cliquez pour ouvrir le bilan médical`}
+                    >
+                      <span className="material-symbols-outlined text-sm">{alert.icon}</span>
+                      <span>{alert.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Quick Actions & Clinical Alerts */}
-          <div className="flex items-center gap-2.5 w-full lg:w-auto justify-between lg:justify-end print:hidden">
-            {patientData.medicalAlerts ? (
+          <div className="flex items-center gap-2 w-full lg:w-auto justify-between lg:justify-end print:hidden flex-wrap">
+            {clinicalAlerts.length === 0 && (
               <div
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-error-container text-error text-xs font-bold border border-error/30 animate-pulse"
-                title={patientData.medicalAlerts}
+                onClick={() => setShowMedicalHistoryModal(true)}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-tertiary-fixed text-on-tertiary-container text-xs font-semibold cursor-pointer hover:opacity-90"
+                title="Bilan médical sain - Cliquez pour consulter"
               >
-                <span className="material-symbols-outlined text-base">warning</span>
-                <span className="max-w-[200px] truncate">{patientData.medicalAlerts}</span>
-              </div>
-            ) : (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-tertiary-fixed text-on-tertiary-container text-xs font-semibold">
                 <span className="material-symbols-outlined text-base">check_circle</span>
-                <span>Aucune allergie signalée</span>
+                <span>Bilan Médical Serein</span>
               </div>
             )}
+
+            <button
+              onClick={() => setShowMedicalHistoryModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-surface-container hover:bg-surface-container-high text-on-surface rounded-xl text-xs font-semibold border border-outline-variant/60 shadow-xs transition-all cursor-pointer"
+              title="Consulter et mettre à jour le bilan médical systémique"
+            >
+              <span className="material-symbols-outlined text-base text-rose-500">health_and_safety</span>
+              <span>Bilan Médical</span>
+            </button>
 
             <button
               onClick={() => setShowPrintFileModal(true)}
@@ -168,7 +228,10 @@ export default function PatientOverview({
             { id: 'overview', label: 'Vue d’ensemble & Historique', icon: 'timeline' },
             { id: 'chart', label: 'Schéma Dentaire (FDI)', icon: 'dentistry' },
             { id: 'notes', label: 'Notes Cliniques', icon: 'description' },
-            { id: 'prescriptions', label: 'Ordonnances', icon: 'prescriptions' }
+            { id: 'prescriptions', label: 'Ordonnances', icon: 'prescriptions' },
+            { id: 'prothesis', label: 'Prothèses & Labo', icon: 'precision_manufacturing' },
+            { id: 'devis', label: 'Devis & Plans', icon: 'request_quote' },
+            { id: 'bilans', label: 'Bilans & Radios', icon: 'biotech' }
           ].map((tab) => {
             const isActive = activeTab === tab.id
             return (
@@ -203,6 +266,7 @@ export default function PatientOverview({
         {activeTab === 'chart' && (
           <DentalChart
             patientId={patientData.id}
+            patientBirthDate={patientData.dateOfBirth}
             onTreatmentAdded={onPatientUpdated}
           />
         )}
@@ -218,6 +282,26 @@ export default function PatientOverview({
           <PrescriptionBuilder
             patient={patientData}
             dentistName="Dr. Amrani"
+          />
+        )}
+
+        {activeTab === 'prothesis' && (
+          <PatientProthesisTab
+            patient={patientData}
+          />
+        )}
+
+        {activeTab === 'devis' && (
+          <PatientDevisTab
+            patient={patientData}
+            onTreatmentsCreated={onPatientUpdated}
+          />
+        )}
+
+        {activeTab === 'bilans' && (
+          <PatientBilansTab
+            patient={patientData}
+            onAlertTriggered={onPatientUpdated}
           />
         )}
       </div>
@@ -251,6 +335,18 @@ export default function PatientOverview({
         <PrintablePatientFile
           patient={patientData}
           onClose={() => setShowPrintFileModal(false)}
+        />
+      )}
+
+      {/* Medical History & Systemic Questionnaire Modal */}
+      {showMedicalHistoryModal && (
+        <MedicalHistoryModal
+          patient={patientData}
+          onClose={() => setShowMedicalHistoryModal(false)}
+          onSuccess={() => {
+            loadMedicalHistory(patientData.id)
+            onPatientUpdated()
+          }}
         />
       )}
     </div>

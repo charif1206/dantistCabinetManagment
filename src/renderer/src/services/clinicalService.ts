@@ -1,4 +1,4 @@
-import { ToothRecord, Treatment, ClinicalNote, Prescription } from '@shared/types'
+import { ToothRecord, Treatment, ClinicalNote, Prescription, MedicalAct } from '@shared/types'
 import { getElectronApi } from './apiClient'
 
 export const clinicalService = {
@@ -24,6 +24,19 @@ export const clinicalService = {
   ): Promise<Treatment> {
     const api = getElectronApi()
     return await api.saveTreatment(treatment)
+  },
+
+  // Medical Acts (Catalogue d'actes dentaires - 8 Spécialités)
+  async getMedicalActs(category?: string, search?: string): Promise<MedicalAct[]> {
+    const api = getElectronApi()
+    return await api.getMedicalActs(category, search)
+  },
+
+  async saveMedicalAct(
+    act: Omit<MedicalAct, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
+  ): Promise<MedicalAct> {
+    const api = getElectronApi()
+    return await api.saveMedicalAct(act)
   },
 
   // Clinical Notes

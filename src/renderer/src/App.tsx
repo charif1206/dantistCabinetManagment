@@ -21,6 +21,10 @@ import NewPatientModal from './features/patients/NewPatientModal'
 import FullCalendarView from './features/planning/FullCalendarView'
 import InvoiceListView from './features/billing/InvoiceListView'
 import DebtsManager from './features/billing/DebtsManager'
+import ProthesisDashboard from './features/prothesis/ProthesisDashboard'
+import { ClinicalAnalyticsView } from './features/analytics/ClinicalAnalyticsView'
+import WaitingRoomWidget from './features/waitingRoom/WaitingRoomWidget'
+import { waitingRoomService } from './services/waitingRoomService'
 
 export default function App(): JSX.Element {
   const { currentUser, isAuthenticated, logout } = useAuth()
@@ -52,6 +56,8 @@ export default function App(): JSX.Element {
   })
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [patients, setPatients] = useState<Patient[]>([])
+  const [waitingRoomCount, setWaitingRoomCount] = useState<number>(0)
+  const [waitingUrgentCount, setWaitingUrgentCount] = useState<number>(0)
   const [searchTerm, setSearchTerm] = useState('')
   const [isSyncing, setIsSyncing] = useState(false)
   const [isBackingUp, setIsBackingUp] = useState(false)
@@ -61,16 +67,22 @@ export default function App(): JSX.Element {
   // Load initial data via Service Layer
   const loadData = async (): Promise<void> => {
     try {
-      const [mState, dStats, apts, pats] = await Promise.all([
+      const [mState, dStats, apts, pats, queue] = await Promise.all([
         dashboardService.getMachineState(),
         dashboardService.getStats(),
         appointmentService.getAppointments(),
-        patientService.getPatients()
+        patientService.getPatients(),
+        waitingRoomService.getWaitingQueue()
       ])
       setMachineState(mState)
       setStats(dStats)
       setAppointments(apts)
       setPatients(pats)
+
+      const activeWaiting = queue.filter((e) => e.status === 'WAITING').length
+      const urgents = queue.filter((e) => Boolean(e.isUrgent) && e.status === 'WAITING').length
+      setWaitingRoomCount(activeWaiting)
+      setWaitingUrgentCount(urgents)
 
       // If viewing a patient, keep the patient data in sync
       if (selectedPatient) {
@@ -289,6 +301,30 @@ export default function App(): JSX.Element {
                 </span>
               )}
             </button>
+
+            <button
+              onClick={() => goToTab('prothesis')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                activeTab === 'prothesis' && !selectedPatient
+                  ? 'bg-secondary text-on-secondary shadow-xs font-semibold'
+                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-xl">precision_manufacturing</span>
+              <span>Prothèses & Labo</span>
+            </button>
+
+            <button
+              onClick={() => goToTab('analytics')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                activeTab === 'analytics' && !selectedPatient
+                  ? 'bg-secondary text-on-secondary shadow-xs font-semibold'
+                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-xl">query_stats</span>
+              <span>Statistiques & Analyses</span>
+            </button>
           </nav>
         </div>
 
@@ -455,16 +491,21 @@ export default function App(): JSX.Element {
 
             {activeTab === 'debts' && <DebtsManager />}
 
+            {activeTab === 'prothesis' && <ProthesisDashboard />}
+
+            {activeTab === 'analytics' && <ClinicalAnalyticsView />}
+
             {(activeTab === 'dashboard' || activeTab === 'patients') && (
               <>
                 {/* Key Metric KPI Cards (with Algerian Dinars - DA) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Card 1: Today's Total Appointments */}
                   <div className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/60 shadow-xs flex items-center justify-between">
                     <div>
                       <p className="text-xs font-medium text-on-surface-variant">Rendez-vous Aujourd'hui</p>
                       <p className="text-2xl font-bold text-on-surface mt-1">{stats.todayAppointmentsCount}</p>
                       <span className="text-[11px] text-secondary font-medium">
-                        {stats.waitingPatientsCount} en attente / fauteuil
+                        Planning de la journée
                       </span>
                     </div>
                     <div className="w-12 h-12 rounded-xl bg-primary-fixed flex items-center justify-center text-primary">
@@ -472,20 +513,38 @@ export default function App(): JSX.Element {
                     </div>
                   </div>
 
+                  {/* Card 2: In Waiting Room */}
                   <div className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/60 shadow-xs flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-medium text-on-surface-variant">Total Patients Enregistrés</p>
-                      <p className="text-2xl font-bold text-on-surface mt-1">{stats.totalPatientsCount}</p>
-                      <span className="text-[11px] text-tertiary-fixed-dim font-medium">Dossiers actifs</span>
+                      <p className="text-xs font-medium text-on-surface-variant">En Salle d'Attente</p>
+                      <p className="text-2xl font-black text-amber-800 mt-1">{waitingRoomCount}</p>
+                      <span className="text-[11px] text-amber-700 font-semibold">
+                        {waitingUrgentCount > 0 ? `⚠️ ${waitingUrgentCount} cas urgent(s)` : 'Patients présents au cabinet'}
+                      </span>
                     </div>
-                    <div className="w-12 h-12 rounded-xl bg-secondary-fixed flex items-center justify-center text-secondary">
-                      <span className="material-symbols-outlined text-2xl">groups</span>
+                    <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-900">
+                      <span className="material-symbols-outlined text-2xl">airline_seat_recline_normal</span>
                     </div>
                   </div>
 
+                  {/* Card 3: Remaining to Visit */}
                   <div className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/60 shadow-xs flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-medium text-on-surface-variant">Recettes du Jour</p>
+                      <p className="text-xs font-medium text-on-surface-variant">Reste à Visiter</p>
+                      <p className="text-2xl font-black text-secondary mt-1">
+                        {appointments.filter((a) => a.status === 'SCHEDULED' || a.status === 'CONFIRMED' || a.status === 'IN_CHAIR').length + waitingRoomCount}
+                      </p>
+                      <span className="text-[11px] text-on-surface-variant font-medium">Fauteuil & RDV restants</span>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-secondary-fixed/50 flex items-center justify-center text-secondary">
+                      <span className="material-symbols-outlined text-2xl">pending_actions</span>
+                    </div>
+                  </div>
+
+                  {/* Card 4: Today's Revenue DA */}
+                  <div className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/60 shadow-xs flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-on-surface-variant">Recettes du Jour (DA)</p>
                       <p className="text-2xl font-bold text-on-tertiary-container mt-1">
                         {stats.todayRevenueDA.toLocaleString()} <span className="text-sm font-semibold">DA</span>
                       </p>
@@ -495,20 +554,12 @@ export default function App(): JSX.Element {
                       <span className="material-symbols-outlined text-2xl">payments</span>
                     </div>
                   </div>
-
-                  <div className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/60 shadow-xs flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-on-surface-variant">Créances & Dettes Patients</p>
-                      <p className="text-2xl font-bold text-pending-orange mt-1">
-                        {stats.totalDebtsDA.toLocaleString()} <span className="text-sm font-semibold">DA</span>
-                      </p>
-                      <span className="text-[11px] text-on-surface-variant">Reste à recouvrer</span>
-                    </div>
-                    <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-900">
-                      <span className="material-symbols-outlined text-2xl">account_balance_wallet</span>
-                    </div>
-                  </div>
                 </div>
+
+                {/* Section: Live Waiting Room Queue (Salle d'Attente en Direct) */}
+                {activeTab === 'dashboard' && (
+                  <WaitingRoomWidget onQueueUpdated={loadData} />
+                )}
 
                 {/* Section: Today's Appointments & Chair Status (Dashboard view) */}
                 {activeTab === 'dashboard' && (

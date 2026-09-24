@@ -78,7 +78,8 @@ const api: ElectronAPI = {
     ipcRenderer.invoke('prescriptionTemplates:delete', id),
 
   // Medical Acts (Catalogue)
-  getMedicalActs: () => ipcRenderer.invoke('acts:getAll'),
+  getMedicalActs: (category?: string, search?: string) =>
+    ipcRenderer.invoke('acts:getAll', category, search),
   saveMedicalAct: (act: Omit<MedicalAct, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) =>
     ipcRenderer.invoke('acts:save', act),
 
@@ -106,7 +107,57 @@ const api: ElectronAPI = {
   printDocument: (options?: { silent?: boolean; printBackground?: boolean; deviceName?: string }) =>
     ipcRenderer.invoke('app:print', options),
   exportToPDF: (options?: { title?: string; pageSize?: 'A4' | 'A5' }) =>
-    ipcRenderer.invoke('app:exportToPDF', options)
+    ipcRenderer.invoke('app:exportToPDF', options),
+
+  // 1. Prosthetic Laboratories & Orders
+  getProstheticLabs: () => ipcRenderer.invoke('labs:getAll'),
+  saveProstheticLab: (lab) => ipcRenderer.invoke('labs:save', lab),
+  deleteProstheticLab: (id) => ipcRenderer.invoke('labs:delete', id),
+  getProthesisOrders: (filters) => ipcRenderer.invoke('prothesis:getAll', filters),
+  getProthesisOrderById: (id) => ipcRenderer.invoke('prothesis:getById', id),
+  saveProthesisOrder: (order) => ipcRenderer.invoke('prothesis:save', order),
+  updateProthesisOrderStatus: (id, status) => ipcRenderer.invoke('prothesis:updateStatus', id, status),
+  deleteProthesisOrder: (id) => ipcRenderer.invoke('prothesis:delete', id),
+
+  // 2. Patient Systemic Medical History & Risk Badges
+  getPatientMedicalHistory: (patientId) => ipcRenderer.invoke('medicalHistory:getByPatientId', patientId),
+  savePatientMedicalHistory: (record) => ipcRenderer.invoke('medicalHistory:save', record),
+
+  // 3. Devis (Quotations) & Long-Term Treatment Plans
+  getDevis: (patientId) => ipcRenderer.invoke('devis:getAll', patientId),
+  getDevisById: (id) => ipcRenderer.invoke('devis:getById', id),
+  saveDevis: (devis, items) => ipcRenderer.invoke('devis:save', devis, items),
+  updateDevisStatus: (id, status) => ipcRenderer.invoke('devis:updateStatus', id, status),
+  deleteDevis: (id) => ipcRenderer.invoke('devis:delete', id),
+  convertDevisToTreatments: (devisId) => ipcRenderer.invoke('devis:convertToTreatments', devisId),
+
+  // 4. Multi-session Treatment Projects (ODF / Implant)
+  getTreatmentProjects: (patientId) => ipcRenderer.invoke('treatmentProjects:getAll', patientId),
+  getTreatmentProjectById: (id) => ipcRenderer.invoke('treatmentProjects:getById', id),
+  saveTreatmentProject: (project) => ipcRenderer.invoke('treatmentProjects:save', project),
+  deleteTreatmentProject: (id) => ipcRenderer.invoke('treatmentProjects:delete', id),
+
+  // 5. Medical Lab Tests & Pre-op Bilans
+  getLabTestOrders: (patientId) => ipcRenderer.invoke('labTests:getAll', patientId),
+  getLabTestOrderById: (id) => ipcRenderer.invoke('labTests:getById', id),
+  saveLabTestOrder: (order) => ipcRenderer.invoke('labTests:save', order),
+  recordLabTestResults: (id, results, isCritical, alertMessage) =>
+    ipcRenderer.invoke('labTests:recordResults', id, results, isCritical, alertMessage),
+  deleteLabTestOrder: (id) => ipcRenderer.invoke('labTests:delete', id),
+
+  // 6. Live Waiting Room
+  getWaitingRoomEntries: (status) => ipcRenderer.invoke('waitingRoom:getAll', status),
+  addToWaitingRoom: (entry) => ipcRenderer.invoke('waitingRoom:add', entry),
+  updateWaitingRoomStatus: (id, status, calledTime, departureTime) =>
+    ipcRenderer.invoke('waitingRoom:updateStatus', id, status, calledTime, departureTime),
+  deleteWaitingRoomEntry: (id) => ipcRenderer.invoke('waitingRoom:delete', id),
+
+  // 7. Advanced Analytics & Efficiency KPIs
+  getClinicalOverviewStats: (startDate, endDate) =>
+    ipcRenderer.invoke('analytics:getOverview', startDate, endDate),
+  getPeakHoursDistribution: () => ipcRenderer.invoke('analytics:getPeakHours'),
+  getChronicLatePatients: () => ipcRenderer.invoke('analytics:getChronicLate'),
+  getSpecialtyDistribution: () => ipcRenderer.invoke('analytics:getSpecialtyDistribution')
 }
 
 // Expose strictly via contextBridge

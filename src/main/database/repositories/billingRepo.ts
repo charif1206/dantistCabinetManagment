@@ -10,13 +10,23 @@ export class BillingRepository {
   }
 
   // 1. Medical Acts
-  getAllActs(): MedicalAct[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM medical_acts
-      WHERE deletedAt IS NULL AND active = 1
-      ORDER BY category ASC, defaultPrice ASC
-    `)
-    return stmt.all() as MedicalAct[]
+  getAllActs(category?: string, search?: string): MedicalAct[] {
+    let query = 'SELECT * FROM medical_acts WHERE deletedAt IS NULL AND active = 1'
+    const params: (string | number)[] = []
+
+    if (category && category !== 'ALL') {
+      query += ' AND category = ?'
+      params.push(category)
+    }
+
+    if (search && search.trim()) {
+      query += ' AND (name LIKE ? OR code LIKE ?)'
+      const term = `%${search.trim()}%`
+      params.push(term, term)
+    }
+
+    query += ' ORDER BY category ASC, defaultPrice ASC'
+    return this.db.prepare(query).all(...params) as MedicalAct[]
   }
 
   saveAct(act: Omit<MedicalAct, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): MedicalAct {
@@ -210,7 +220,7 @@ export class BillingRepository {
 
       // If initial payment was made at invoice creation, record payment
       if (paidAmount > 0) {
-        const payId = `pay_${Date.now()}`
+        const payId = `pay_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
         const fullPay: Payment = {
           id: payId,
           patientId: fullInv.patientId,
@@ -288,7 +298,7 @@ export class BillingRepository {
 
   recordPayment(payment: Omit<Payment, 'id' | 'createdAt'>): Payment {
     const now = new Date().toISOString()
-    const id = `pay_${Date.now()}`
+    const id = `pay_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
     const fullPay: Payment = {
       ...payment,
       id,

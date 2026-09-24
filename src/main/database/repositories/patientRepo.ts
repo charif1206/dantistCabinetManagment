@@ -22,11 +22,11 @@ export class PatientRepository {
       const stmt = this.db.prepare(`
         SELECT * FROM patients
         WHERE deletedAt IS NULL AND (
-          firstName LIKE ? OR lastName LIKE ? OR phone LIKE ? OR cin LIKE ? OR patientNumber LIKE ?
+          firstName LIKE ? OR lastName LIKE ? OR phone LIKE ? OR cin LIKE ? OR patientNumber LIKE ? OR wilaya LIKE ?
         )
         ORDER BY lastName ASC, firstName ASC
       `)
-      return stmt.all(q, q, q, q, q) as Patient[]
+      return stmt.all(q, q, q, q, q, q) as Patient[]
     }
 
     const stmt = this.db.prepare('SELECT * FROM patients WHERE deletedAt IS NULL ORDER BY lastName ASC, firstName ASC')
@@ -39,6 +39,22 @@ export class PatientRepository {
     return (row as Patient) || null
   }
 
+  getByPhone(phone: string, excludeId?: string): Patient | null {
+    const cleaned = phone.trim().replace(/[\s\-_.]/g, '')
+    const sql = excludeId
+      ? `SELECT * FROM patients
+         WHERE deletedAt IS NULL
+           AND replace(replace(replace(replace(phone, ' ', ''), '-', ''), '_', ''), '.', '') = ?
+           AND id != ?`
+      : `SELECT * FROM patients
+         WHERE deletedAt IS NULL
+           AND replace(replace(replace(replace(phone, ' ', ''), '-', ''), '_', ''), '.', '') = ?`
+
+    const stmt = this.db.prepare(sql)
+    const row = excludeId ? stmt.get(cleaned, excludeId) : stmt.get(cleaned)
+    return (row as Patient) || null
+  }
+
   save(
     patientData: Omit<Patient, 'id' | 'patientNumber' | 'createdAt' | 'updatedAt' | 'syncStatus'> & {
       id?: string
@@ -48,6 +64,14 @@ export class PatientRepository {
     const now = new Date().toISOString()
     const id = patientData.id || `pat_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
     const isNew = !patientData.id || !this.getById(id)
+
+    // Check for duplicate phone number
+    if (patientData.phone) {
+      const duplicate = this.getByPhone(patientData.phone, patientData.id)
+      if (duplicate) {
+        throw new Error('Ce numéro de téléphone existe déjà pour un autre patient.')
+      }
+    }
 
     if (isNew) {
       const patientNumber = patientData.patientNumber || this.generatePatientNumber()

@@ -23,20 +23,27 @@ export default function ConflictAlertModal({
     minute: '2-digit'
   })
 
-  // Calculate suggested alternative slot (immediately after the conflicting appointment ends)
+  // Calculate suggested alternative slot (immediately after the conflicting appointment ends or next morning if > 22:00)
   const conflictingStart = new Date(conflictingAppointment.dateTime).getTime()
   const conflictingDuration = conflictingAppointment.durationMinutes || 30
-  const conflictingEnd = new Date(conflictingStart + conflictingDuration * 60 * 1000)
+  const suggestedSlot = new Date(conflictingStart + conflictingDuration * 60 * 1000)
+
+  // If the suggested time exceeds 22:00, roll over to next morning at 08:00
+  const isPastEveningShift = suggestedSlot.getHours() > 22 || (suggestedSlot.getHours() === 22 && suggestedSlot.getMinutes() > 0)
+  if (isPastEveningShift) {
+    suggestedSlot.setDate(suggestedSlot.getDate() + 1)
+    suggestedSlot.setHours(8, 0, 0, 0)
+  }
 
   const pad = (n: number): string => String(n).padStart(2, '0')
-  const suggestedIso = `${conflictingEnd.getFullYear()}-${pad(conflictingEnd.getMonth() + 1)}-${pad(
-    conflictingEnd.getDate()
-  )}T${pad(conflictingEnd.getHours())}:${pad(conflictingEnd.getMinutes())}`
+  const suggestedIso = `${suggestedSlot.getFullYear()}-${pad(suggestedSlot.getMonth() + 1)}-${pad(
+    suggestedSlot.getDate()
+  )}T${pad(suggestedSlot.getHours())}:${pad(suggestedSlot.getMinutes())}`
 
-  const suggestedTimeDisplay = conflictingEnd.toLocaleTimeString('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  const isNextDay = suggestedSlot.getDate() !== new Date(conflictingAppointment.dateTime).getDate()
+  const suggestedTimeDisplay = isNextDay
+    ? `Demain à ${suggestedSlot.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+    : suggestedSlot.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 
   return (
     <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[70] flex items-center justify-center p-4">
@@ -94,6 +101,7 @@ export default function ConflictAlertModal({
           {onAcceptSuggestedTime && (
             <button
               type="button"
+              aria-label={`Choisir le créneau alternatif : ${suggestedTimeDisplay}`}
               onClick={() => onAcceptSuggestedTime(suggestedIso)}
               className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
             >

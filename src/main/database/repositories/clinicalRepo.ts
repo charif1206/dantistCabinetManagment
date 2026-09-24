@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import { ToothRecord, ClinicalNote, Prescription, PrescriptionItem } from '@shared/types'
+import { ToothRecord, ClinicalNote, Prescription, PrescriptionItem, MedicalAct } from '@shared/types'
 import { SyncQueueRepository } from './syncQueueRepo'
 
 export class ClinicalRepository {
@@ -173,4 +173,56 @@ export class ClinicalRepository {
     this.syncQueue.enqueue('prescription', id, isNew ? 'INSERT' : 'UPDATE', fullPres)
     return fullPres
   }
+
+  // Medical Acts (Catalogue d'actes dentaires - 8 Spécialités)
+  getMedicalActs(category?: string, search?: string): MedicalAct[] {
+    let query = 'SELECT * FROM medical_acts WHERE deletedAt IS NULL AND active = 1'
+    const params: (string | number)[] = []
+
+    if (category && category !== 'ALL') {
+      query += ' AND category = ?'
+      params.push(category)
+    }
+
+    if (search && search.trim()) {
+      query += ' AND (name LIKE ? OR code LIKE ?)'
+      const term = `%${search.trim()}%`
+      params.push(term, term)
+    }
+
+    query += ' ORDER BY category ASC, defaultPrice ASC'
+    return this.db.prepare(query).all(...params) as MedicalAct[]
+  }
+
+  saveMedicalAct(act: Omit<MedicalAct, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): MedicalAct {
+    const now = new Date().toISOString()
+    const id = act.id || `act_${Date.now()}`
+    const isNew = !act.id
+
+    if (isNew) {
+      const fullAct: MedicalAct = {
+        ...act,
+        id,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null
+      }
+      const stmt = this.db.prepare(`
+        INSERT INTO medical_acts (id, code, name, category, defaultPrice, durationMinutes, active, createdAt, updatedAt)
+        VALUES (@id, @code, @name, @category, @defaultPrice, @durationMinutes, @active, @createdAt, @updatedAt)
+      `)
+      stmt.run({ ...fullAct, active: fullAct.active ? 1 : 0 })
+      return fullAct
+    } else {
+      const stmt = this.db.prepare(`
+        UPDATE medical_acts
+        SET code = @code, name = @name, category = @category, defaultPrice = @defaultPrice,
+            durationMinutes = @durationMinutes, active = @active, updatedAt = @updatedAt
+        WHERE id = @id
+      `)
+      stmt.run({ ...act, active: act.active ? 1 : 0, updatedAt: now })
+      return { ...act, updatedAt: now } as MedicalAct
+    }
+  }
 }
+

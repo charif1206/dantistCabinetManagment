@@ -1,5 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { ToothRecord } from '@shared/types'
+import { isPediatricTooth, getToothFdiName } from './dentalConstants'
+import { patientService } from '../../services/patientService'
+import { evaluateClinicalAlerts, ClinicalAlert } from '../patients/medicalAlertUtils'
 
 interface ToothDetailModalProps {
   toothNumber: number
@@ -38,6 +41,7 @@ export default function ToothDetailModal({
   onSave,
   onAddTreatment
 }: ToothDetailModalProps): JSX.Element {
+  const isPedia = isPediatricTooth(toothNumber)
   const [condition, setCondition] = useState<ToothRecord['condition']>(initialRecord?.condition || 'CARIES')
   const [selectedSurfaces, setSelectedSurfaces] = useState<string[]>(
     initialRecord?.surfaces ? initialRecord.surfaces.split('').filter(Boolean) : ['O', 'M']
@@ -46,6 +50,23 @@ export default function ToothDetailModal({
     initialRecord?.notes || 'Carie dentinaire occluso-mésiale à traiter en composite'
   )
   const [isSaving, setIsSaving] = useState(false)
+  const [clinicalAlerts, setClinicalAlerts] = useState<ClinicalAlert[]>([])
+
+  useEffect(() => {
+    const fetchAlerts = async (): Promise<void> => {
+      try {
+        const [pat, hist] = await Promise.all([
+          patientService.getPatientById(patientId),
+          patientService.getMedicalHistory(patientId)
+        ])
+        const evaluated = evaluateClinicalAlerts(hist, pat?.medicalAlerts)
+        setClinicalAlerts(evaluated)
+      } catch (err) {
+        console.warn('Could not load alerts for ToothDetailModal', err)
+      }
+    }
+    fetchAlerts()
+  }, [patientId])
 
   const toggleSurface = (key: string): void => {
     if (selectedSurfaces.includes(key)) {
@@ -78,15 +99,32 @@ export default function ToothDetailModal({
         {/* Header */}
         <div className="px-6 py-4 border-b border-outline-variant/60 bg-surface-container-low flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-secondary-fixed text-on-secondary-fixed flex items-center justify-center font-bold text-base shadow-xs">
+            <div
+              className={`w-10 h-10 rounded-xl font-mono flex items-center justify-center font-bold text-base shadow-xs ${
+                isPedia
+                  ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                  : 'bg-secondary-fixed text-on-secondary-fixed'
+              }`}
+            >
               {toothNumber}
             </div>
             <div>
-              <h2 className="font-bold text-base text-on-surface">
-                Détails Cliniques — Dent {toothNumber}
-              </h2>
-              <p className="text-xs text-on-surface-variant font-medium">
-                {toothNumber < 30 ? 'Arcade Maxillaire (Supérieure)' : 'Arcade Mandibulaire (Inférieure)'} · Notation FDI
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-base text-on-surface">
+                  Détails Cliniques — Dent {toothNumber}
+                </h2>
+                {isPedia ? (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-bold border border-amber-500/30">
+                    Dent de Lait / Temporaire
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md bg-secondary/10 text-secondary text-[10px] font-bold border border-secondary/20">
+                    Dent Permanente
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-on-surface-variant font-medium mt-0.5">
+                {getToothFdiName(toothNumber)}
               </p>
             </div>
           </div>
@@ -97,6 +135,25 @@ export default function ToothDetailModal({
             <span className="material-symbols-outlined text-xl">close</span>
           </button>
         </div>
+
+        {/* Clinical Alerts Warning Bar (Prevention of medical errors) */}
+        {clinicalAlerts.length > 0 && (
+          <div className="px-6 py-2 bg-rose-500/10 border-b border-rose-500/30 flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider flex items-center gap-1">
+              <span className="material-symbols-outlined text-xs">warning</span>
+              <span>Alerte Médicale Patient :</span>
+            </span>
+            {clinicalAlerts.map((a) => (
+              <span
+                key={a.id}
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${a.badgeBg} ${a.isPulsing ? 'animate-pulse' : ''}`}
+                title={a.recommendation}
+              >
+                {a.title}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">

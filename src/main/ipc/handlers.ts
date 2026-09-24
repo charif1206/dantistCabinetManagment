@@ -9,6 +9,13 @@ import { MachineAuthService } from '../auth/machineAuth'
 import { SyncEngine } from '../sync/syncEngine'
 import { BackupService } from '../backup/backupService'
 import { DrugsRepository } from '../database/repositories/drugsRepo'
+import { ProthesisRepository } from '../database/repositories/prothesisRepo'
+import { MedicalHistoryRepository } from '../database/repositories/medicalHistoryRepo'
+import { DevisRepository } from '../database/repositories/devisRepo'
+import { LabTestRepository } from '../database/repositories/labTestRepo'
+import { WaitingRoomRepository } from '../database/repositories/waitingRoomRepo'
+import { AdvancedStatsRepository } from '../database/repositories/advancedStatsRepo'
+import { initDatabase } from '../database/db'
 import { DashboardStats } from '@shared/types'
 
 export function registerIpcHandlers(
@@ -23,6 +30,13 @@ export function registerIpcHandlers(
   syncEngine: SyncEngine,
   backupService: BackupService
 ): void {
+  const db = initDatabase()
+  const prothesisRepo = new ProthesisRepository(db)
+  const medicalHistoryRepo = new MedicalHistoryRepository(db)
+  const devisRepo = new DevisRepository(db)
+  const labTestRepo = new LabTestRepository(db)
+  const waitingRoomRepo = new WaitingRoomRepository(db)
+  const advancedStatsRepo = new AdvancedStatsRepository(db)
   // 1. Machine & Cloud Sync
   ipcMain.handle('machine:getState', () => {
     return authService.getState()
@@ -146,8 +160,8 @@ export function registerIpcHandlers(
   })
 
   // 6. Medical Acts (Catalogue)
-  ipcMain.handle('acts:getAll', () => {
-    return billingRepo.getAllActs()
+  ipcMain.handle('acts:getAll', (_event, category?: string, search?: string) => {
+    return clinicalRepo.getMedicalActs(category, search)
   })
 
   ipcMain.handle('acts:save', (_event, act) => {
@@ -242,4 +256,144 @@ export function registerIpcHandlers(
       return { success: false, error: err?.message || 'Erreur lors de la génération du PDF' }
     }
   })
+
+  // 11. Prosthetic Laboratories & Orders
+  ipcMain.handle('labs:getAll', () => {
+    return prothesisRepo.getLabs()
+  })
+
+  ipcMain.handle('labs:save', (_event, lab) => {
+    return prothesisRepo.saveLab(lab)
+  })
+
+  ipcMain.handle('labs:delete', (_event, id: string) => {
+    return prothesisRepo.deleteLab(id)
+  })
+
+  ipcMain.handle('prothesis:getAll', (_event, filters) => {
+    return prothesisRepo.getOrders(filters)
+  })
+
+  ipcMain.handle('prothesis:getById', (_event, id: string) => {
+    return prothesisRepo.getOrderById(id)
+  })
+
+  ipcMain.handle('prothesis:save', (_event, order) => {
+    return prothesisRepo.saveOrder(order)
+  })
+
+  ipcMain.handle('prothesis:updateStatus', (_event, id: string, status) => {
+    return prothesisRepo.updateOrderStatus(id, status)
+  })
+
+  ipcMain.handle('prothesis:delete', (_event, id: string) => {
+    return prothesisRepo.deleteOrder(id)
+  })
+
+  // 12. Patient Systemic Medical History & Risk Badges
+  ipcMain.handle('medicalHistory:getByPatientId', (_event, patientId: string) => {
+    return medicalHistoryRepo.getByPatientId(patientId)
+  })
+
+  ipcMain.handle('medicalHistory:save', (_event, record) => {
+    return medicalHistoryRepo.save(record)
+  })
+
+  // 13. Devis (Quotations) & Treatment Plans
+  ipcMain.handle('devis:getAll', (_event, patientId?: string) => {
+    return devisRepo.getAll(patientId)
+  })
+
+  ipcMain.handle('devis:getById', (_event, id: string) => {
+    return devisRepo.getById(id)
+  })
+
+  ipcMain.handle('devis:save', (_event, devis, items) => {
+    return devisRepo.save(devis, items)
+  })
+
+  ipcMain.handle('devis:updateStatus', (_event, id: string, status) => {
+    return devisRepo.updateStatus(id, status)
+  })
+
+  ipcMain.handle('devis:delete', (_event, id: string) => {
+    return devisRepo.delete(id)
+  })
+
+  ipcMain.handle('devis:convertToTreatments', (_event, devisId: string) => {
+    return devisRepo.convertToTreatments(devisId)
+  })
+
+  // 14. Treatment Projects (ODF / Implant Multi-session Roadmaps)
+  ipcMain.handle('treatmentProjects:getAll', (_event, patientId?: string) => {
+    return devisRepo.getProjects(patientId)
+  })
+
+  ipcMain.handle('treatmentProjects:getById', (_event, id: string) => {
+    return devisRepo.getProjectById(id)
+  })
+
+  ipcMain.handle('treatmentProjects:save', (_event, project) => {
+    return devisRepo.saveProject(project)
+  })
+
+  ipcMain.handle('treatmentProjects:delete', (_event, id: string) => {
+    return devisRepo.deleteProject(id)
+  })
+
+  // 15. Medical Lab Tests & Pre-op Bilans
+  ipcMain.handle('labTests:getAll', (_event, patientId?: string) => {
+    return labTestRepo.getAll(patientId)
+  })
+
+  ipcMain.handle('labTests:getById', (_event, id: string) => {
+    return labTestRepo.getById(id)
+  })
+
+  ipcMain.handle('labTests:save', (_event, order) => {
+    return labTestRepo.save(order)
+  })
+
+  ipcMain.handle('labTests:recordResults', (_event, id: string, results, isCritical, alertMessage) => {
+    return labTestRepo.recordResults(id, results, isCritical, alertMessage)
+  })
+
+  ipcMain.handle('labTests:delete', (_event, id: string) => {
+    return labTestRepo.delete(id)
+  })
+
+  // 16. Live Waiting Room Queue
+  ipcMain.handle('waitingRoom:getAll', (_event, status) => {
+    return waitingRoomRepo.getAll(status)
+  })
+
+  ipcMain.handle('waitingRoom:add', (_event, entry) => {
+    return waitingRoomRepo.add(entry)
+  })
+
+  ipcMain.handle('waitingRoom:updateStatus', (_event, id: string, status, calledTime, departureTime) => {
+    return waitingRoomRepo.updateStatus(id, status, calledTime, departureTime)
+  })
+
+  ipcMain.handle('waitingRoom:delete', (_event, id: string) => {
+    return waitingRoomRepo.delete(id)
+  })
+
+  // 17. Advanced Clinical & Organizational Analytics
+  ipcMain.handle('analytics:getOverview', (_event, startDate?: string, endDate?: string) => {
+    return advancedStatsRepo.getOverview(startDate, endDate)
+  })
+
+  ipcMain.handle('analytics:getPeakHours', () => {
+    return advancedStatsRepo.getPeakHoursDistribution()
+  })
+
+  ipcMain.handle('analytics:getChronicLate', () => {
+    return advancedStatsRepo.getChronicLatePatients()
+  })
+
+  ipcMain.handle('analytics:getSpecialtyDistribution', () => {
+    return advancedStatsRepo.getSpecialtyDistribution()
+  })
 }
+

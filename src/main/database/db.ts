@@ -45,7 +45,7 @@ export function initDatabase(): Database.Database {
   return dbInstance
 }
 
-function migrateExistingTables(db: Database.Database): void {
+export function migrateExistingTables(db: Database.Database): void {
   try {
     const tableExists = (table: string): boolean => {
       const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(table)
@@ -135,6 +135,218 @@ function migrateExistingTables(db: Database.Database): void {
         );
         CREATE INDEX IF NOT EXISTS idx_prescription_templates_title ON prescription_templates(title);
       `)
+    }
+
+    // 14. Prosthetic Laboratories
+    if (!tableExists('prosthetic_laboratories')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS prosthetic_laboratories (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          phone TEXT NOT NULL,
+          wilaya TEXT DEFAULT 'Alger',
+          address TEXT,
+          contactPerson TEXT,
+          active INTEGER NOT NULL DEFAULT 1,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          deletedAt TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_prosthetic_labs_active ON prosthetic_laboratories(active);
+      `)
+    } else {
+      const cols = (db.pragma('table_info(prosthetic_laboratories)') as { name: string }[]).map((c) => c.name)
+      if (!cols.includes('wilaya')) db.exec("ALTER TABLE prosthetic_laboratories ADD COLUMN wilaya TEXT DEFAULT 'Alger';")
+      if (!cols.includes('address')) db.exec('ALTER TABLE prosthetic_laboratories ADD COLUMN address TEXT;')
+      if (!cols.includes('contactPerson')) db.exec('ALTER TABLE prosthetic_laboratories ADD COLUMN contactPerson TEXT;')
+      if (!cols.includes('active')) db.exec('ALTER TABLE prosthetic_laboratories ADD COLUMN active INTEGER NOT NULL DEFAULT 1;')
+      if (!cols.includes('deletedAt')) db.exec('ALTER TABLE prosthetic_laboratories ADD COLUMN deletedAt TEXT;')
+    }
+
+    // 15. Prothesis Orders
+    if (!tableExists('prothesis_orders')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS prothesis_orders (
+          id TEXT PRIMARY KEY,
+          orderNumber TEXT NOT NULL UNIQUE,
+          patientId TEXT NOT NULL,
+          patientName TEXT NOT NULL,
+          dentistName TEXT NOT NULL,
+          labId TEXT NOT NULL,
+          labName TEXT NOT NULL,
+          actName TEXT NOT NULL,
+          toothNumber INTEGER,
+          shade TEXT NOT NULL,
+          nature TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'PREPARATION',
+          sentDate TEXT,
+          expectedDate TEXT,
+          receivedDate TEXT,
+          deliveryDate TEXT,
+          labCostDA REAL NOT NULL DEFAULT 0.0,
+          clinicPriceDA REAL NOT NULL DEFAULT 0.0,
+          notes TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          deletedAt TEXT,
+          FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE RESTRICT,
+          FOREIGN KEY (labId) REFERENCES prosthetic_laboratories(id) ON DELETE RESTRICT
+        );
+        CREATE INDEX IF NOT EXISTS idx_prothesis_status ON prothesis_orders(status);
+        CREATE INDEX IF NOT EXISTS idx_prothesis_patient ON prothesis_orders(patientId);
+        CREATE INDEX IF NOT EXISTS idx_prothesis_lab ON prothesis_orders(labId);
+      `)
+    } else {
+      const cols = (db.pragma('table_info(prothesis_orders)') as { name: string }[]).map((c) => c.name)
+      if (!cols.includes('toothNumber')) db.exec('ALTER TABLE prothesis_orders ADD COLUMN toothNumber INTEGER;')
+      if (!cols.includes('shade')) db.exec("ALTER TABLE prothesis_orders ADD COLUMN shade TEXT DEFAULT 'A2';")
+      if (!cols.includes('nature')) db.exec("ALTER TABLE prothesis_orders ADD COLUMN nature TEXT DEFAULT 'ZIRCONE';")
+      if (!cols.includes('labCostDA')) db.exec('ALTER TABLE prothesis_orders ADD COLUMN labCostDA REAL NOT NULL DEFAULT 0.0;')
+      if (!cols.includes('clinicPriceDA')) db.exec('ALTER TABLE prothesis_orders ADD COLUMN clinicPriceDA REAL NOT NULL DEFAULT 0.0;')
+      if (!cols.includes('deletedAt')) db.exec('ALTER TABLE prothesis_orders ADD COLUMN deletedAt TEXT;')
+    }
+
+    // 16. Patient Systemic Medical History
+    if (!tableExists('patient_medical_history')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS patient_medical_history (
+          id TEXT PRIMARY KEY,
+          patientId TEXT NOT NULL UNIQUE,
+          cardioChecklist TEXT NOT NULL DEFAULT '[]',
+          hematologyChecklist TEXT NOT NULL DEFAULT '[]',
+          gastroChecklist TEXT NOT NULL DEFAULT '[]',
+          respiratoryChecklist TEXT NOT NULL DEFAULT '[]',
+          endocrineChecklist TEXT NOT NULL DEFAULT '[]',
+          allergiesChecklist TEXT NOT NULL DEFAULT '[]',
+          isPregnantOrNursing INTEGER DEFAULT 0,
+          pregnancyMonth INTEGER,
+          generalRiskLevel TEXT NOT NULL DEFAULT 'LOW',
+          doctorNotes TEXT,
+          updatedAt TEXT NOT NULL,
+          FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_medical_history_patient ON patient_medical_history(patientId);
+      `)
+    }
+
+    // 17. Devis
+    if (!tableExists('devis')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS devis (
+          id TEXT PRIMARY KEY,
+          devisNumber TEXT NOT NULL UNIQUE,
+          patientId TEXT NOT NULL,
+          patientName TEXT NOT NULL,
+          dentistName TEXT NOT NULL,
+          date TEXT NOT NULL,
+          validityDays INTEGER NOT NULL DEFAULT 30,
+          totalGrossDA REAL NOT NULL DEFAULT 0.0,
+          discountDA REAL NOT NULL DEFAULT 0.0,
+          totalNetDA REAL NOT NULL DEFAULT 0.0,
+          status TEXT NOT NULL DEFAULT 'DRAFT',
+          notes TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          deletedAt TEXT,
+          FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE RESTRICT
+        );
+        CREATE INDEX IF NOT EXISTS idx_devis_patient ON devis(patientId);
+        CREATE INDEX IF NOT EXISTS idx_devis_status ON devis(status);
+      `)
+    }
+
+    // 18. Devis Items
+    if (!tableExists('devis_items')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS devis_items (
+          id TEXT PRIMARY KEY,
+          devisId TEXT NOT NULL,
+          actId TEXT,
+          actName TEXT NOT NULL,
+          specialty TEXT NOT NULL,
+          toothNumber INTEGER,
+          quantity INTEGER NOT NULL DEFAULT 1,
+          unitPriceDA REAL NOT NULL DEFAULT 0.0,
+          totalPriceDA REAL NOT NULL DEFAULT 0.0,
+          FOREIGN KEY (devisId) REFERENCES devis(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_devis_items_devis ON devis_items(devisId);
+      `)
+    }
+
+    // 19. Treatment Projects
+    if (!tableExists('treatment_projects')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS treatment_projects (
+          id TEXT PRIMARY KEY,
+          patientId TEXT NOT NULL,
+          title TEXT NOT NULL,
+          specialty TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'PLANNED',
+          totalPhases INTEGER NOT NULL DEFAULT 1,
+          completedPhases INTEGER NOT NULL DEFAULT 0,
+          estimatedTotalDA REAL NOT NULL DEFAULT 0.0,
+          startDate TEXT,
+          targetEndDate TEXT,
+          roadmapJson TEXT NOT NULL DEFAULT '[]',
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_treatment_projects_patient ON treatment_projects(patientId);
+      `)
+    }
+
+    // 20. Lab Test Orders
+    if (!tableExists('lab_test_orders')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS lab_test_orders (
+          id TEXT PRIMARY KEY,
+          orderNumber TEXT NOT NULL UNIQUE,
+          patientId TEXT NOT NULL,
+          dentistName TEXT NOT NULL,
+          requestDate TEXT NOT NULL,
+          reason TEXT,
+          testsRequestedJson TEXT NOT NULL DEFAULT '[]',
+          resultsJson TEXT NOT NULL DEFAULT '{}',
+          isCriticalAlert INTEGER DEFAULT 0,
+          criticalAlertMessage TEXT,
+          status TEXT NOT NULL DEFAULT 'PENDING',
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE RESTRICT
+        );
+        CREATE INDEX IF NOT EXISTS idx_lab_test_orders_patient ON lab_test_orders(patientId);
+        CREATE INDEX IF NOT EXISTS idx_lab_test_orders_status ON lab_test_orders(status);
+      `)
+    }
+
+    // 21. Waiting Room Entries
+    if (!tableExists('waiting_room_entries')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS waiting_room_entries (
+          id TEXT PRIMARY KEY,
+          patientId TEXT NOT NULL,
+          patientName TEXT NOT NULL,
+          patientPhone TEXT,
+          appointmentId TEXT,
+          arrivalTime TEXT NOT NULL,
+          calledTime TEXT,
+          departureTime TEXT,
+          status TEXT NOT NULL DEFAULT 'WAITING',
+          isUrgent INTEGER NOT NULL DEFAULT 0,
+          priorityNote TEXT,
+          assignedDentist TEXT,
+          createdAt TEXT NOT NULL,
+          FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_waiting_status ON waiting_room_entries(status, arrivalTime);
+        CREATE INDEX IF NOT EXISTS idx_waiting_patient ON waiting_room_entries(patientId);
+      `)
+    }
+
+    if (tableExists('medical_acts')) {
+      db.exec("UPDATE medical_acts SET category = 'PROTHESE_FIXE' WHERE category = 'PROTHESE';")
     }
   } catch (err) {
     console.warn('[Database] Table migration warning:', err)
@@ -356,11 +568,151 @@ function executeMigrations(db: Database.Database): void {
         itemsJson TEXT NOT NULL,
         createdAt TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS prosthetic_laboratories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        phone TEXT NOT NULL,
+        wilaya TEXT DEFAULT 'Alger',
+        address TEXT,
+        contactPerson TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        deletedAt TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS prothesis_orders (
+        id TEXT PRIMARY KEY,
+        orderNumber TEXT NOT NULL UNIQUE,
+        patientId TEXT NOT NULL,
+        patientName TEXT NOT NULL,
+        dentistName TEXT NOT NULL,
+        labId TEXT NOT NULL,
+        labName TEXT NOT NULL,
+        actName TEXT NOT NULL,
+        toothNumber INTEGER,
+        shade TEXT NOT NULL,
+        nature TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PREPARATION',
+        sentDate TEXT,
+        expectedDate TEXT,
+        receivedDate TEXT,
+        deliveryDate TEXT,
+        labCostDA REAL NOT NULL DEFAULT 0.0,
+        clinicPriceDA REAL NOT NULL DEFAULT 0.0,
+        notes TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        deletedAt TEXT,
+        FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE RESTRICT,
+        FOREIGN KEY (labId) REFERENCES prosthetic_laboratories(id) ON DELETE RESTRICT
+      );
+
+      CREATE TABLE IF NOT EXISTS patient_medical_history (
+        id TEXT PRIMARY KEY,
+        patientId TEXT NOT NULL UNIQUE,
+        cardioChecklist TEXT NOT NULL DEFAULT '[]',
+        hematologyChecklist TEXT NOT NULL DEFAULT '[]',
+        gastroChecklist TEXT NOT NULL DEFAULT '[]',
+        respiratoryChecklist TEXT NOT NULL DEFAULT '[]',
+        endocrineChecklist TEXT NOT NULL DEFAULT '[]',
+        allergiesChecklist TEXT NOT NULL DEFAULT '[]',
+        isPregnantOrNursing INTEGER DEFAULT 0,
+        pregnancyMonth INTEGER,
+        generalRiskLevel TEXT NOT NULL DEFAULT 'LOW',
+        doctorNotes TEXT,
+        updatedAt TEXT NOT NULL,
+        FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS devis (
+        id TEXT PRIMARY KEY,
+        devisNumber TEXT NOT NULL UNIQUE,
+        patientId TEXT NOT NULL,
+        patientName TEXT NOT NULL,
+        dentistName TEXT NOT NULL,
+        date TEXT NOT NULL,
+        validityDays INTEGER NOT NULL DEFAULT 30,
+        totalGrossDA REAL NOT NULL DEFAULT 0.0,
+        discountDA REAL NOT NULL DEFAULT 0.0,
+        totalNetDA REAL NOT NULL DEFAULT 0.0,
+        status TEXT NOT NULL DEFAULT 'DRAFT',
+        notes TEXT,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        deletedAt TEXT,
+        FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE RESTRICT
+      );
+
+      CREATE TABLE IF NOT EXISTS devis_items (
+        id TEXT PRIMARY KEY,
+        devisId TEXT NOT NULL,
+        actId TEXT,
+        actName TEXT NOT NULL,
+        specialty TEXT NOT NULL,
+        toothNumber INTEGER,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        unitPriceDA REAL NOT NULL DEFAULT 0.0,
+        totalPriceDA REAL NOT NULL DEFAULT 0.0,
+        FOREIGN KEY (devisId) REFERENCES devis(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS treatment_projects (
+        id TEXT PRIMARY KEY,
+        patientId TEXT NOT NULL,
+        title TEXT NOT NULL,
+        specialty TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PLANNED',
+        totalPhases INTEGER NOT NULL DEFAULT 1,
+        completedPhases INTEGER NOT NULL DEFAULT 0,
+        estimatedTotalDA REAL NOT NULL DEFAULT 0.0,
+        startDate TEXT,
+        targetEndDate TEXT,
+        roadmapJson TEXT NOT NULL DEFAULT '[]',
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS lab_test_orders (
+        id TEXT PRIMARY KEY,
+        orderNumber TEXT NOT NULL UNIQUE,
+        patientId TEXT NOT NULL,
+        dentistName TEXT NOT NULL,
+        requestDate TEXT NOT NULL,
+        reason TEXT,
+        testsRequestedJson TEXT NOT NULL DEFAULT '[]',
+        resultsJson TEXT NOT NULL DEFAULT '{}',
+        isCriticalAlert INTEGER DEFAULT 0,
+        criticalAlertMessage TEXT,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE RESTRICT
+      );
+
+      CREATE TABLE IF NOT EXISTS waiting_room_entries (
+        id TEXT PRIMARY KEY,
+        patientId TEXT NOT NULL,
+        patientName TEXT NOT NULL,
+        patientPhone TEXT,
+        appointmentId TEXT,
+        arrivalTime TEXT NOT NULL,
+        calledTime TEXT,
+        departureTime TEXT,
+        status TEXT NOT NULL DEFAULT 'WAITING',
+        isUrgent INTEGER NOT NULL DEFAULT 0,
+        priorityNote TEXT,
+        assignedDentist TEXT,
+        createdAt TEXT NOT NULL,
+        FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE CASCADE
+      );
     `)
   }
 }
 
-function seedInitialDataIfEmpty(db: Database.Database): void {
+export function seedInitialDataIfEmpty(db: Database.Database): void {
   const now = new Date().toISOString()
   const today = new Date().toISOString().split('T')[0]
 
@@ -378,26 +730,71 @@ function seedInitialDataIfEmpty(db: Database.Database): void {
     insertUser.run('usr_assistant', 'amira_assistant', hashPassword('assistant123'), 'Amira Mansour', 'ASSISTANT', now, now)
   }
 
-  // 2. Seed Medical Acts (Catalogue d'actes dentaires algérien)
+  // 2. Seed Medical Acts (Catalogue d'actes dentaires algérien - 8 Spécialités)
   const actCount = db.prepare('SELECT count(*) as count FROM medical_acts').get() as { count: number }
-  if (actCount.count === 0) {
-    console.log('[Database] Seeding Algerian Medical Acts Catalogue in Dinars (DA)...')
+  const odfCount = db.prepare("SELECT count(*) as count FROM medical_acts WHERE category = 'ODF'").get() as { count: number }
+  if (actCount.count === 0 || odfCount.count === 0) {
+    console.log('[Database] Seeding Algerian Medical Acts Catalogue in Dinars (DA) across 8 dental specialties...')
     const defaultActs: Omit<MedicalAct, 'createdAt' | 'updatedAt' | 'deletedAt'>[] = [
-      { id: 'act_01', code: 'CONS', name: 'Consultation & Bilan bucco-dentaire', category: 'SOINS', defaultPrice: 1500, durationMinutes: 20, active: true },
-      { id: 'act_02', code: 'DET', name: 'Détartrage & Polissage sus-gingival', category: 'SOINS', defaultPrice: 3500, durationMinutes: 30, active: true },
-      { id: 'act_03', code: 'COMP1', name: 'Obturation composite 1 face', category: 'SOINS', defaultPrice: 3000, durationMinutes: 30, active: true },
-      { id: 'act_04', code: 'COMP2', name: 'Obturation composite multi-faces (2/3 faces)', category: 'SOINS', defaultPrice: 4500, durationMinutes: 45, active: true },
-      { id: 'act_05', code: 'ENDO', name: 'Traitement endodontique (Biopulpectomie molaire)', category: 'SOINS', defaultPrice: 8500, durationMinutes: 60, active: true },
-      { id: 'act_06', code: 'EXT_S', name: 'Avulsion / Extraction dentaire simple', category: 'CHIRURGIE', defaultPrice: 2500, durationMinutes: 30, active: true },
-      { id: 'act_07', code: 'EXT_CH', name: 'Extraction chirurgicale dent de sagesse incluse', category: 'CHIRURGIE', defaultPrice: 8000, durationMinutes: 60, active: true },
-      { id: 'act_08', code: 'CR_CCM', name: 'Couronne Céramo-Métallique (CCM)', category: 'PROTHESE', defaultPrice: 18000, durationMinutes: 45, active: true },
-      { id: 'act_09', code: 'CR_ZIR', name: 'Couronne tout-céramique Zircone', category: 'PROTHESE', defaultPrice: 28000, durationMinutes: 45, active: true },
-      { id: 'act_10', code: 'IMP', name: 'Pose Implant dentaire titane (Phase chirurgicale)', category: 'CHIRURGIE', defaultPrice: 65000, durationMinutes: 60, active: true }
+      // 1. ODF
+      { id: 'act_odf_01', code: 'ODF-BRACK', name: 'Pose de brackets bi-maxillaire', category: 'ODF', defaultPrice: 80000, durationMinutes: 90, active: true },
+      { id: 'act_odf_02', code: 'ODF-CTRL', name: 'Contrôle ODF & Activation', category: 'ODF', defaultPrice: 2500, durationMinutes: 30, active: true },
+      { id: 'act_odf_03', code: 'ODF-CONT', name: 'Contention fixe collée', category: 'ODF', defaultPrice: 15000, durationMinutes: 45, active: true },
+      { id: 'act_odf_04', code: 'ODF-GOUT', name: 'Gouttière thermoformée', category: 'ODF', defaultPrice: 8000, durationMinutes: 30, active: true },
+
+      // 2. PROTHESE_FIXE
+      { id: 'act_pfix_01', code: 'PRO-ZIRC', name: 'Couronne Zircone monolithique', category: 'PROTHESE_FIXE', defaultPrice: 22000, durationMinutes: 45, active: true },
+      { id: 'act_pfix_02', code: 'PRO-CCM', name: 'Couronne Céramo-métallique', category: 'PROTHESE_FIXE', defaultPrice: 14000, durationMinutes: 45, active: true },
+      { id: 'act_pfix_03', code: 'PRO-EMAX', name: 'Facette Emax', category: 'PROTHESE_FIXE', defaultPrice: 28000, durationMinutes: 60, active: true },
+      { id: 'act_pfix_04', code: 'PRO-INLAY', name: 'Inlay/Onlay résine/céramique', category: 'PROTHESE_FIXE', defaultPrice: 12000, durationMinutes: 45, active: true },
+      { id: 'act_pfix_05', code: 'PRO-IMP', name: 'Couronne implanto-portée', category: 'PROTHESE_FIXE', defaultPrice: 35000, durationMinutes: 60, active: true },
+
+      // 3. PROTHESE_AMOVIBLE
+      { id: 'act_pamo_01', code: 'PRO-TOT', name: 'Prothèse totale résine unimaxillaire', category: 'PROTHESE_AMOVIBLE', defaultPrice: 30000, durationMinutes: 45, active: true },
+      { id: 'act_pamo_02', code: 'PRO-STEL', name: 'Châssis métallique Stellite', category: 'PROTHESE_AMOVIBLE', defaultPrice: 45000, durationMinutes: 45, active: true },
+      { id: 'act_pamo_03', code: 'PRO-REP', name: 'Réparation de prothèse fêlée', category: 'PROTHESE_AMOVIBLE', defaultPrice: 4000, durationMinutes: 30, active: true },
+      { id: 'act_pamo_04', code: 'PRO-REB', name: 'Rebasage complet', category: 'PROTHESE_AMOVIBLE', defaultPrice: 9000, durationMinutes: 40, active: true },
+
+      // 4. CHIRURGIE
+      { id: 'act_chir_01', code: 'CHIR-DDS', name: 'Avulsion dent incluse / Sagesse DDS', category: 'CHIRURGIE', defaultPrice: 12000, durationMinutes: 45, active: true },
+      { id: 'act_chir_02', code: 'CHIR-KYST', name: 'Kystectomie apicale', category: 'CHIRURGIE', defaultPrice: 15000, durationMinutes: 60, active: true },
+      { id: 'act_chir_03', code: 'CHIR-FREN', name: 'Frénectomie labiale', category: 'CHIRURGIE', defaultPrice: 8000, durationMinutes: 30, active: true },
+      { id: 'act_chir_04', code: 'CHIR-CAN', name: 'Dégagement canine incluse pour ODF', category: 'CHIRURGIE', defaultPrice: 14000, durationMinutes: 45, active: true },
+
+      // 5. IMPLANT
+      { id: 'act_imp_01', code: 'IMP-TIT', name: 'Pose implant titane unitaire', category: 'IMPLANT', defaultPrice: 60000, durationMinutes: 60, active: true },
+      { id: 'act_imp_02', code: 'IMP-SLIFT', name: 'Comblement osseux sinusien / Sinus Lift', category: 'IMPLANT', defaultPrice: 45000, durationMinutes: 90, active: true },
+      { id: 'act_imp_03', code: 'IMP-ROG', name: 'Régénération Osseuse Guidée (ROG)', category: 'IMPLANT', defaultPrice: 30000, durationMinutes: 60, active: true },
+      { id: 'act_imp_04', code: 'IMP-GREF', name: 'Greffe épithélio-conjonctive', category: 'IMPLANT', defaultPrice: 20000, durationMinutes: 60, active: true },
+
+      // 6. SOINS
+      { id: 'act_soin_01', code: 'SOIN-ENDOM', name: 'Traitement endodontique molaire (Endo inf/sup)', category: 'SOINS', defaultPrice: 9000, durationMinutes: 60, active: true },
+      { id: 'act_soin_02', code: 'SOIN-ENDOU', name: 'Endodontie mono-radiculée', category: 'SOINS', defaultPrice: 5000, durationMinutes: 40, active: true },
+      { id: 'act_soin_03', code: 'SOIN-COMP3', name: 'Obturation composite 3 faces (MOD)', category: 'SOINS', defaultPrice: 6000, durationMinutes: 45, active: true },
+      { id: 'act_soin_04', code: 'SOIN-PULP', name: 'Pulpotomie dent lactéale', category: 'SOINS', defaultPrice: 4000, durationMinutes: 30, active: true },
+
+      // 7. CONSULTATION_IMAGERIE
+      { id: 'act_img_01', code: 'IMG-CONS', name: 'Consultation initiale & Bilan', category: 'CONSULTATION_IMAGERIE', defaultPrice: 1500, durationMinutes: 20, active: true },
+      { id: 'act_img_02', code: 'IMG-PAN', name: 'Radio Panoramique 2D numérique', category: 'CONSULTATION_IMAGERIE', defaultPrice: 2000, durationMinutes: 15, active: true },
+      { id: 'act_img_03', code: 'IMG-TLR', name: 'Téléradiographie céphalométrique (TLR)', category: 'CONSULTATION_IMAGERIE', defaultPrice: 2500, durationMinutes: 15, active: true },
+      { id: 'act_img_04', code: 'IMG-CBCT', name: 'Tomographie 3D Cône Beam (CBCT)', category: 'CONSULTATION_IMAGERIE', defaultPrice: 6000, durationMinutes: 20, active: true },
+
+      // 8. PARODONTIE
+      { id: 'act_paro_01', code: 'PARO-DET', name: 'Détartrage et polissage complet', category: 'PARODONTIE', defaultPrice: 4000, durationMinutes: 30, active: true },
+      { id: 'act_paro_02', code: 'PARO-SURF', name: 'Surfaçage radiculaire / quadrant', category: 'PARODONTIE', defaultPrice: 8000, durationMinutes: 45, active: true },
+      { id: 'act_paro_03', code: 'PARO-GING', name: 'Gingivectomie à visée esthétique', category: 'PARODONTIE', defaultPrice: 10000, durationMinutes: 45, active: true }
     ]
 
     const insertAct = db.prepare(`
       INSERT INTO medical_acts (id, code, name, category, defaultPrice, durationMinutes, active, createdAt, updatedAt)
       VALUES (@id, @code, @name, @category, @defaultPrice, @durationMinutes, @active, '${now}', '${now}')
+      ON CONFLICT(id) DO UPDATE SET
+        code = excluded.code,
+        name = excluded.name,
+        category = excluded.category,
+        defaultPrice = excluded.defaultPrice,
+        durationMinutes = excluded.durationMinutes,
+        active = excluded.active
     `)
 
     for (const act of defaultActs) {

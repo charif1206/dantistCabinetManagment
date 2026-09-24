@@ -31,7 +31,7 @@ export interface Patient {
   gender?: 'M' | 'F' | 'OTHER'
   address?: string
   wilaya?: string
-  medicalAlerts?: string // Allergies, Diabète, etc.
+  medicalAlerts?: string | null // Allergies, Diabète, etc.
   bloodGroup?: string
   notes?: string
   createdAt: string
@@ -72,7 +72,7 @@ export type ToothCondition =
 export interface ToothRecord {
   id: string
   patientId: string
-  toothNumber: number // 11 to 48 (FDI World Dental Federation notation)
+  toothNumber: number // FDI notation: 11 to 48 (Permanent) and 51 to 85 (Deciduous/Pediatric)
   condition: ToothCondition
   surfaces?: string // e.g. "MOD", "O", "V", "L"
   notes?: string
@@ -83,12 +83,28 @@ export interface ToothRecord {
 
 export type ActCategory = 'SOINS' | 'PROTHESE' | 'CHIRURGIE'
 
+// 8 Clinical Specialties for Algerian Dental Practice
+export type DentalSpecialty =
+  | 'ODF'
+  | 'PROTHESE_FIXE'
+  | 'PROTHESE_AMOVIBLE'
+  | 'CHIRURGIE'
+  | 'IMPLANT'
+  | 'SOINS'
+  | 'SOINS_CONSERVATEURS'
+  | 'ENDODONTIE'
+  | 'CONSULTATION_IMAGERIE'
+  | 'PARODONTIE'
+  | 'PARODONTOLOGIE'
+
 export interface MedicalAct {
   id: string
   code: string
   name: string
-  category: ActCategory
+  category: DentalSpecialty | ActCategory | string
+  specialty?: string
   defaultPrice: number // Price in Algerian Dinars (DA)
+  defaultPriceDA?: number
   durationMinutes: number
   active: boolean
   createdAt: string
@@ -246,6 +262,184 @@ export interface PrescriptionTemplate {
   createdAt: string
 }
 
+// 1. Prosthetic Laboratories & Prothesis Orders
+export interface ProstheticLaboratory {
+  id: string
+  name: string
+  phone: string
+  wilaya?: string | null
+  address?: string | null
+  contactPerson?: string | null
+  active: boolean | number
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+}
+
+export type ProthesisOrderStatus =
+  | 'PREPARATION'
+  | 'SENT'
+  | 'RECEIVED'
+  | 'FITTING'
+  | 'DELIVERED'
+  | 'REJECTED'
+
+export type ProthesisNature =
+  | 'ZIRCONE'
+  | 'CERAMO_METALLIQUE'
+  | 'EMAX'
+  | 'STELLITE'
+  | 'RESINE_COMPLETE'
+  | 'RESINE_PARTIELLE'
+  | 'INLAY_ONLAY'
+  | string
+
+export interface ProthesisOrder {
+  id: string
+  orderNumber: string // e.g. LAB-2026-0001
+  patientId: string
+  patientName: string
+  dentistName: string
+  labId: string
+  labName: string
+  actName: string
+  toothNumber?: number | null // FDI: 11-48 or 51-85
+  shade: string // Vita A1-D4, 3D Master, Bleach
+  nature: ProthesisNature
+  status: ProthesisOrderStatus
+  sentDate?: string | null
+  expectedDate?: string | null
+  receivedDate?: string | null
+  deliveryDate?: string | null
+  labCostDA: number
+  clinicPriceDA: number
+  notes?: string | null
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+}
+
+// 2. Patient Systemic Medical History & Risk Stratification
+export type GeneralRiskLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL'
+
+export interface MedicalAntecedentsRecord {
+  id: string
+  patientId: string
+  cardioChecklist: string[] // HTA, Cardiopathie, Souffle, Valve, Pacemaker, Infarctus
+  hematologyChecklist: string[] // Anticoagulant, Hémostase, Hémophilie, Saignement
+  gastroChecklist: string[] // Hépatite B/C, Cirrhose, Ulcère
+  respiratoryChecklist: string[] // Asthme, BPCO, Insuffisance
+  endocrineChecklist: string[] // Diabète Type 1/2, Thyroïde
+  allergiesChecklist: string[] // Pénicilline, Latex, Anesthésique avec adrénaline, AINS
+  isPregnantOrNursing?: boolean | number
+  pregnancyMonth?: number | null
+  generalRiskLevel: GeneralRiskLevel
+  doctorNotes?: string | null
+  updatedAt: string
+}
+
+// 3. Devis (Official Quotations in Algerian Dinars DA)
+export type DevisStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED'
+
+export interface DevisItem {
+  id: string
+  devisId: string
+  actId?: string | null
+  actName: string
+  specialty: DentalSpecialty | string
+  toothNumber?: number | null
+  quantity: number
+  unitPriceDA: number
+  totalPriceDA: number
+}
+
+export interface Devis {
+  id: string
+  devisNumber: string // e.g. DEV-2026-0001
+  patientId: string
+  patientName: string
+  dentistName: string
+  date: string
+  validityDays: number
+  totalGrossDA: number
+  discountDA: number
+  totalNetDA: number
+  status: DevisStatus
+  notes?: string | null
+  items?: DevisItem[]
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+}
+
+// 4. Multi-session Treatment Projects (ODF & Implant Roadmaps)
+export type TreatmentProjectStatus = 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'SUSPENDED'
+
+export interface TreatmentProjectPhase {
+  phaseNumber: number
+  title: string
+  description?: string
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED'
+  targetDate?: string
+  completedDate?: string
+  estimatedPriceDA?: number
+  notes?: string
+}
+
+export interface TreatmentProject {
+  id: string
+  patientId: string
+  title: string // e.g. "Orthodontie Bi-maxillaire", "Réhabilitation Implantaire"
+  specialty: DentalSpecialty | string // 'ODF', 'IMPLANT', 'PROTHESE_FIXE'
+  status: TreatmentProjectStatus
+  totalPhases: number
+  completedPhases: number
+  estimatedTotalDA: number
+  startDate?: string | null
+  targetEndDate?: string | null
+  roadmapJson: string // JSON representation of phases/steps
+  createdAt: string
+  updatedAt: string
+}
+
+// 5. Medical Lab Tests & Pre-operative Screenings
+export type LabTestOrderStatus = 'PENDING' | 'RECEIVED' | 'VALIDATED'
+
+export interface LabTestOrder {
+  id: string
+  orderNumber: string // e.g. BIL-2026-0001
+  patientId: string
+  dentistName: string
+  requestDate: string
+  reason?: string | null
+  testsRequestedJson: string // e.g. ['Glycémie à jeun', 'TP/INR', 'FNS', 'Hépatite B/C']
+  resultsJson: string // e.g. {'Glycémie': '1.02 g/L', 'INR': '1.10'}
+  isCriticalAlert: boolean | number
+  criticalAlertMessage?: string | null
+  status: LabTestOrderStatus
+  createdAt: string
+  updatedAt: string
+}
+
+// 6. Live Waiting Room Queue
+export type WaitingRoomStatus = 'WAITING' | 'IN_CHAIR' | 'DONE' | 'LEFT'
+
+export interface WaitingRoomEntry {
+  id: string
+  patientId: string
+  patientName: string
+  patientPhone?: string | null
+  appointmentId?: string | null
+  arrivalTime: string
+  calledTime?: string | null
+  departureTime?: string | null
+  status: WaitingRoomStatus
+  isUrgent: boolean | number // Urgent case flag
+  priorityNote?: string | null
+  assignedDentist?: string | null
+  createdAt: string
+}
+
 // Window API Exposed via Preload
 export interface ElectronAPI {
   // Machine & Cloud Sync
@@ -290,7 +484,7 @@ export interface ElectronAPI {
   deletePrescriptionTemplate: (id: string) => Promise<boolean>
 
   // Medical Acts (Catalogue)
-  getMedicalActs: () => Promise<MedicalAct[]>
+  getMedicalActs: (category?: string, search?: string) => Promise<MedicalAct[]>
   saveMedicalAct: (act: Omit<MedicalAct, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<MedicalAct>
 
   // Payments & Invoices
@@ -308,6 +502,98 @@ export interface ElectronAPI {
   // Native Printing & PDF Export
   printDocument: (options?: { silent?: boolean; printBackground?: boolean; deviceName?: string }) => Promise<boolean>
   exportToPDF: (options?: { title?: string; pageSize?: 'A4' | 'A5' }) => Promise<{ success: boolean; filePath?: string; error?: string }>
+
+  // ==========================================
+  // New Modules (Update 2 Expansion)
+  // ==========================================
+
+  // 1. Prosthetic Laboratories & Orders
+  getProstheticLabs: () => Promise<ProstheticLaboratory[]>
+  saveProstheticLab: (lab: Omit<ProstheticLaboratory, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<ProstheticLaboratory>
+  deleteProstheticLab: (id: string) => Promise<boolean>
+  getProthesisOrders: (filters?: { patientId?: string; labId?: string; status?: ProthesisOrderStatus }) => Promise<ProthesisOrder[]>
+  getProthesisOrderById: (id: string) => Promise<ProthesisOrder | null>
+  saveProthesisOrder: (order: Omit<ProthesisOrder, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'> & { id?: string; orderNumber?: string }) => Promise<ProthesisOrder>
+  updateProthesisOrderStatus: (id: string, status: ProthesisOrderStatus) => Promise<boolean>
+  deleteProthesisOrder: (id: string) => Promise<boolean>
+
+  // 2. Patient Systemic Medical History & Risk Badges
+  getPatientMedicalHistory: (patientId: string) => Promise<MedicalAntecedentsRecord | null>
+  savePatientMedicalHistory: (record: Omit<MedicalAntecedentsRecord, 'id' | 'updatedAt'> & { id?: string }) => Promise<MedicalAntecedentsRecord>
+
+  // 3. Devis (Quotations) & Long-Term Treatment Plans
+  getDevis: (patientId?: string) => Promise<Devis[]>
+  getDevisById: (id: string) => Promise<Devis | null>
+  saveDevis: (
+    devis: Omit<Devis, 'id' | 'devisNumber' | 'createdAt' | 'updatedAt' | 'items'> & { id?: string; devisNumber?: string },
+    items: Omit<DevisItem, 'id' | 'devisId'>[]
+  ) => Promise<Devis>
+  updateDevisStatus: (id: string, status: DevisStatus) => Promise<boolean>
+  deleteDevis: (id: string) => Promise<boolean>
+  convertDevisToTreatments: (devisId: string) => Promise<{ success: boolean; createdTreatmentsCount: number }>
+
+  // 4. Multi-session Treatment Projects (ODF / Implant)
+  getTreatmentProjects: (patientId?: string) => Promise<TreatmentProject[]>
+  getTreatmentProjectById: (id: string) => Promise<TreatmentProject | null>
+  saveTreatmentProject: (project: Omit<TreatmentProject, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<TreatmentProject>
+  deleteTreatmentProject: (id: string) => Promise<boolean>
+
+  // 5. Medical Lab Tests & Pre-op Bilans
+  getLabTestOrders: (patientId?: string) => Promise<LabTestOrder[]>
+  getLabTestOrderById: (id: string) => Promise<LabTestOrder | null>
+  saveLabTestOrder: (order: Omit<LabTestOrder, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'> & { id?: string; orderNumber?: string }) => Promise<LabTestOrder>
+  recordLabTestResults: (id: string, results: Record<string, string>, isCritical?: boolean, alertMessage?: string) => Promise<LabTestOrder>
+  deleteLabTestOrder: (id: string) => Promise<boolean>
+
+  // 6. Live Waiting Room
+  getWaitingRoomEntries: (status?: WaitingRoomStatus) => Promise<WaitingRoomEntry[]>
+  addToWaitingRoom: (entry: Omit<WaitingRoomEntry, 'id' | 'createdAt' | 'arrivalTime'> & { id?: string; arrivalTime?: string }) => Promise<WaitingRoomEntry>
+  updateWaitingRoomStatus: (id: string, status: WaitingRoomStatus, calledTime?: string, departureTime?: string) => Promise<boolean>
+  deleteWaitingRoomEntry: (id: string) => Promise<boolean>
+
+  // 7. Advanced Analytics & Efficiency KPIs
+  getClinicalOverviewStats: (startDate?: string, endDate?: string) => Promise<ClinicalOverviewStats>
+  getPeakHoursDistribution: () => Promise<PeakHourCell[]>
+  getChronicLatePatients: () => Promise<ChronicLatePatient[]>
+  getSpecialtyDistribution: () => Promise<SpecialtyDistribution[]>
+}
+
+// 7. Clinical & Organizational Analytics Interfaces
+export interface ClinicalOverviewStats {
+  noShowRate: number
+  totalAppointments: number
+  cancelledCount: number
+  completedCount: number
+  averageLeadTimeDays: number
+  chronicLatePatientsCount: number
+  totalRevenueDA: number
+}
+
+export interface PeakHourCell {
+  dayIndex: number
+  dayName: string
+  hour: number
+  count: number
+  intensity: number
+}
+
+export interface ChronicLatePatient {
+  patientId: string
+  patientName: string
+  patientPhone?: string | null
+  patientNumber: string
+  missedCount: number
+  totalBookings: number
+  lastMissedDate?: string | null
+  requireConfirmation: boolean
+}
+
+export interface SpecialtyDistribution {
+  specialty: string
+  label: string
+  treatmentCount: number
+  revenueDA: number
+  percentage: number
 }
 
 declare global {
