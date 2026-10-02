@@ -183,11 +183,15 @@ export default function PrintableLabSlip({
               <div className="space-y-1">
                 <span className="text-[11px] text-slate-500 font-semibold uppercase block">Dent (Schéma FDI)</span>
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-secondary/10 text-secondary font-black font-mono text-lg border border-secondary/20">
-                    {order.toothNumber ? order.toothNumber : '—'}
+                  <span className="inline-flex items-center justify-center min-w-10 h-10 px-2 rounded-xl bg-secondary/10 text-secondary font-black font-mono text-base border border-secondary/20">
+                    {order.teeth || (order.toothNumber ? String(order.toothNumber) : '—')}
                   </span>
                   <span className="text-xs text-slate-600 font-medium">
-                    {order.toothNumber ? `Dent ${order.toothNumber}` : 'Arcade / Multiples'}
+                    {order.teeth && order.teeth.includes(',')
+                      ? `Bridge (${order.teeth})`
+                      : order.toothNumber
+                      ? `Dent ${order.toothNumber}`
+                      : 'Arcade / Multiples'}
                   </span>
                 </div>
               </div>

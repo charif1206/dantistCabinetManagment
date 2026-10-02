@@ -88,6 +88,7 @@ export const mockElectronApi: ElectronAPI = {
     })
   ),
   deletePatient: vi.fn().mockResolvedValue(true),
+  permanentDeletePatient: vi.fn().mockResolvedValue(true),
 
   // Appointments
   getAppointments: vi.fn().mockResolvedValue([]),
@@ -143,6 +144,7 @@ export const mockElectronApi: ElectronAPI = {
       ...prescription
     })
   ),
+  deletePrescription: vi.fn().mockResolvedValue(true),
 
   // Drugs Catalog & Prescription Templates (Presets)
   getDrugsCatalog: vi.fn().mockResolvedValue([]),

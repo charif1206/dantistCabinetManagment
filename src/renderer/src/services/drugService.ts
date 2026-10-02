@@ -1,4 +1,4 @@
-import { DrugItem, PrescriptionTemplate } from '@shared/types'
+import { DrugItem, PrescriptionTemplate, Prescription } from '@shared/types'
 import { getElectronApi } from './apiClient'
 
 export const drugService = {
@@ -34,5 +34,24 @@ export const drugService = {
   async deletePrescriptionTemplate(id: string): Promise<boolean> {
     const api = getElectronApi()
     return await api.deletePrescriptionTemplate(id)
+  },
+
+  // Prescriptions Management (Ordonnances)
+  async getPrescriptions(patientId: string) {
+    const api = getElectronApi()
+    return await api.getPrescriptions(patientId)
+  },
+
+  async savePrescription(
+    prescription: Omit<Prescription, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
+  ): Promise<Prescription> {
+    const api = getElectronApi()
+    return await api.savePrescription(prescription)
+  },
+
+  async deletePrescription(id: string): Promise<boolean> {
+    const api = getElectronApi()
+    return await api.deletePrescription(id)
   }
 }
+

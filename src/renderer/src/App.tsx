@@ -63,6 +63,9 @@ export default function App(): JSX.Element {
   const [isBackingUp, setIsBackingUp] = useState(false)
   const [backupMessage, setBackupMessage] = useState<{ text: string; isError?: boolean } | null>(null)
   const [showAddPatientModal, setShowAddPatientModal] = useState(false)
+  const [patientToArchive, setPatientToArchive] = useState<{ id: string; name: string; number: string } | null>(null)
+  const [patientToDelete, setPatientToDelete] = useState<{ id: string; name: string; number: string } | null>(null)
+  const [isActionPending, setIsActionPending] = useState(false)
 
   // Load initial data via Service Layer
   const loadData = async (): Promise<void> => {
@@ -98,11 +101,24 @@ export default function App(): JSX.Element {
     loadData()
 
     // Subscribe to sync state changes via Service Layer
-    const unsubscribe = dashboardService.subscribeToSyncState((updatedState) => {
+    const unsubscribeSync = dashboardService.subscribeToSyncState((updatedState) => {
       setMachineState(updatedState)
       dashboardService.getStats().then(setStats)
     })
-    return () => unsubscribe()
+
+    // Subscribe to real-time stats updates (payments, invoices, debts)
+    const unsubscribeStats = dashboardService.subscribeToStatsUpdates((newStats) => {
+      if (newStats) {
+        setStats(newStats)
+      } else {
+        dashboardService.getStats().then(setStats)
+      }
+    })
+
+    return () => {
+      unsubscribeSync()
+      unsubscribeStats()
+    }
   }, [])
 
   // Expose showToast globally for dev tools / verification
@@ -189,15 +205,41 @@ export default function App(): JSX.Element {
     showToast(`Statut mis à jour : ${STATUS_CONFIG[newStatus]?.label || newStatus}`, 'info')
   }
 
-  // Soft delete patient
-  const handleDeletePatient = async (id: string, name: string): Promise<void> => {
-    if (confirm(`Confirmez-vous l'archivage du dossier de ${name} ?`)) {
-      await patientService.deletePatient(id)
-      if (selectedPatient?.id === id) {
+  // Archive patient (Soft delete)
+  const handleConfirmArchive = async (): Promise<void> => {
+    if (!patientToArchive) return
+    setIsActionPending(true)
+    try {
+      await patientService.deletePatient(patientToArchive.id)
+      if (selectedPatient?.id === patientToArchive.id) {
         goToTab('patients')
       }
       await loadData()
-      showToast(`Dossier de ${name} archivé`, 'warning')
+      showToast(`Dossier de ${patientToArchive.name} archivé avec succès`, 'warning')
+      setPatientToArchive(null)
+    } catch (err: any) {
+      showToast(err?.message || "Erreur lors de l'archivage", 'error')
+    } finally {
+      setIsActionPending(false)
+    }
+  }
+
+  // Permanent delete patient
+  const handleConfirmPermanentDelete = async (): Promise<void> => {
+    if (!patientToDelete) return
+    setIsActionPending(true)
+    try {
+      await patientService.permanentDeletePatient(patientToDelete.id)
+      if (selectedPatient?.id === patientToDelete.id) {
+        goToTab('patients')
+      }
+      await loadData()
+      showToast(`Dossier de ${patientToDelete.name} supprimé définitivement`, 'error')
+      setPatientToDelete(null)
+    } catch (err: any) {
+      showToast(err?.message || 'Erreur lors de la suppression définitive', 'error')
+    } finally {
+      setIsActionPending(false)
     }
   }
 
@@ -498,7 +540,7 @@ export default function App(): JSX.Element {
             {(activeTab === 'dashboard' || activeTab === 'patients') && (
               <>
                 {/* Key Metric KPI Cards (with Algerian Dinars - DA) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                   {/* Card 1: Today's Total Appointments */}
                   <div className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/60 shadow-xs flex items-center justify-between">
                     <div>
@@ -552,6 +594,32 @@ export default function App(): JSX.Element {
                     </div>
                     <div className="w-12 h-12 rounded-xl bg-tertiary-container/10 flex items-center justify-center text-on-tertiary-container">
                       <span className="material-symbols-outlined text-2xl">payments</span>
+                    </div>
+                  </div>
+
+                  {/* Card 5: Global Unpaid Debts DA */}
+                  <div
+                    onClick={() => goToTab('debts')}
+                    className="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/60 shadow-xs flex items-center justify-between cursor-pointer hover:border-error/40 hover:shadow-sm transition-all group"
+                    title="Cliquer pour gérer les créances et dettes patients"
+                  >
+                    <div>
+                      <p className="text-xs font-medium text-on-surface-variant">Créances Globales Impayées (DA)</p>
+                      <p className={`text-2xl font-bold mt-1 ${stats.totalDebtsDA > 0 ? 'text-error' : 'text-on-surface'}`}>
+                        {stats.totalDebtsDA.toLocaleString()} <span className="text-sm font-semibold">DA</span>
+                      </p>
+                      <span className={`text-[11px] font-semibold ${stats.totalDebtsDA > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                        {stats.totalDebtsDA > 0
+                          ? `⚠️ ${stats.debtorPatientsCount ?? 1} patient${(stats.debtorPatientsCount ?? 1) > 1 ? 's' : ''} débiteur${(stats.debtorPatientsCount ?? 1) > 1 ? 's' : ''}`
+                          : 'Toutes les créances sont soldées'}
+                      </span>
+                    </div>
+                    <div
+                      className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 ${
+                        stats.totalDebtsDA > 0 ? 'bg-error-container text-error' : 'bg-emerald-100 text-emerald-800'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-2xl">account_balance_wallet</span>
                     </div>
                   </div>
                 </div>
@@ -716,11 +784,18 @@ export default function App(): JSX.Element {
                                   <span>Dossier</span>
                                 </button>
                                 <button
-                                  onClick={() => handleDeletePatient(p.id, `${p.firstName} ${p.lastName}`)}
+                                  onClick={() => setPatientToArchive({ id: p.id, name: `${p.firstName} ${p.lastName}`, number: p.patientNumber })}
                                   title="Archiver le dossier (Soft Delete)"
-                                  className="p-1 rounded-lg hover:bg-error-container/30 text-outline hover:text-error transition-colors cursor-pointer"
+                                  className="p-1 rounded-lg hover:bg-amber-100 text-outline hover:text-amber-800 transition-colors cursor-pointer"
                                 >
                                   <span className="material-symbols-outlined text-base">archive</span>
+                                </button>
+                                <button
+                                  onClick={() => setPatientToDelete({ id: p.id, name: `${p.firstName} ${p.lastName}`, number: p.patientNumber })}
+                                  title="Supprimer définitivement le dossier (Action irréversible)"
+                                  className="p-1 rounded-lg hover:bg-rose-100 text-outline hover:text-rose-700 transition-colors cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-base">delete_forever</span>
                                 </button>
                               </div>
                             </td>
@@ -743,6 +818,90 @@ export default function App(): JSX.Element {
         onSuccess={() => loadData()}
         existingPatients={patients}
       />
+
+      {/* 4. Modal Confirmation Archivage Patient */}
+      {patientToArchive && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-surface-container-lowest rounded-3xl border border-outline-variant shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-xl">archive</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-on-surface">Archiver le Dossier Médical</h3>
+                <p className="text-xs text-on-surface-variant font-mono">{patientToArchive.number}</p>
+              </div>
+            </div>
+            <p className="text-sm text-on-surface-variant leading-relaxed">
+              Confirmez-vous l'archivage du dossier de <strong className="text-on-surface font-semibold">{patientToArchive.name}</strong> ?
+              Le dossier sera masqué de la liste active, mais son historique comptable et clinique sera préservé.
+            </p>
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-outline-variant/40">
+              <button
+                type="button"
+                onClick={() => setPatientToArchive(null)}
+                disabled={isActionPending}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-on-surface-variant hover:bg-surface-container transition-colors cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmArchive}
+                disabled={isActionPending}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {isActionPending ? 'Archivage...' : "Confirmer l'archivage"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Modal Confirmation Suppression Définitive Patient */}
+      {patientToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-surface-container-lowest rounded-3xl border border-rose-300 shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-xl">delete_forever</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-rose-700">Suppression Définitive</h3>
+                <p className="text-xs text-on-surface-variant font-mono">{patientToDelete.number}</p>
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-900 font-medium space-y-1">
+              <p className="font-bold flex items-center gap-1">
+                <span className="material-symbols-outlined text-sm">warning</span>
+                Attention : Action Irréversible !
+              </p>
+              <p>
+                Êtes-vous absolument certain de vouloir effacer définitivement le dossier de <strong className="text-rose-950 font-semibold">{patientToDelete.name}</strong> ?
+                Tous les rendez-vous, soins, prothèses et bilans associés seront irrémédiablement supprimés.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-outline-variant/40">
+              <button
+                type="button"
+                onClick={() => setPatientToDelete(null)}
+                disabled={isActionPending}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-on-surface-variant hover:bg-surface-container transition-colors cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmPermanentDelete}
+                disabled={isActionPending}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {isActionPending ? 'Suppression...' : 'Oui, Supprimer Définitivement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </>
   )

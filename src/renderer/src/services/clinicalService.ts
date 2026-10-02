@@ -63,5 +63,11 @@ export const clinicalService = {
   ): Promise<Prescription> {
     const api = getElectronApi()
     return await api.savePrescription(prescription)
+  },
+
+  async deletePrescription(id: string): Promise<boolean> {
+    const api = getElectronApi()
+    return await api.deletePrescription(id)
   }
 }
+

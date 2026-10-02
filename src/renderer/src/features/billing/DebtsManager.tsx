@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { Patient, Invoice } from '@shared/types'
+import { Patient, Invoice, Payment } from '@shared/types'
 import { patientService } from '../../services/patientService'
 import { billingService } from '../../services/billingService'
 import RecordPaymentModal from './RecordPaymentModal'
+import PrintableReceiptModal from './PrintableReceiptModal'
 
 interface PatientDebtItem {
   patient: Patient
@@ -17,6 +18,11 @@ export default function DebtsManager(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedPatientForPayment, setSelectedPatientForPayment] = useState<Patient | null>(null)
+  const [lastPaymentReceipt, setLastPaymentReceipt] = useState<{
+    payment: Payment
+    patient: Patient
+  } | null>(null)
+  const [showReceiptModal, setShowReceiptModal] = useState(false)
 
   const loadDebts = async (): Promise<void> => {
     try {
@@ -93,6 +99,43 @@ export default function DebtsManager(): JSX.Element {
           </span>
         </div>
       </div>
+
+      {/* Payment Success & Receipt Print Banner */}
+      {lastPaymentReceipt && (
+        <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 animate-in fade-in duration-200 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-2xl">check_circle</span>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-emerald-950">
+                Paiement de {lastPaymentReceipt.payment.amount.toLocaleString()} DA enregistré pour{' '}
+                <strong className="underline">{lastPaymentReceipt.patient.firstName} {lastPaymentReceipt.patient.lastName}</strong>
+                {' · '}Reçu N° {lastPaymentReceipt.payment.receiptNumber || 'REC-2026-XXXX'}
+              </p>
+              <p className="text-[11px] text-emerald-700">
+                Le solde a été mis à jour immédiatement (0 DA si soldé) et la facture est désormais Réglée.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowReceiptModal(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">print</span>
+              <span>Imprimer le Reçu d'Encaissement</span>
+            </button>
+            <button
+              onClick={() => setLastPaymentReceipt(null)}
+              className="p-1 text-emerald-700 hover:text-emerald-950 rounded-lg hover:bg-emerald-200/50 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-base">close</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filter and Table */}
       <div className="bg-surface-container-lowest border border-outline-variant/60 rounded-2xl p-6 shadow-xs space-y-4">
@@ -186,10 +229,26 @@ export default function DebtsManager(): JSX.Element {
       {selectedPatientForPayment && (
         <RecordPaymentModal
           initialPatientId={selectedPatientForPayment.id}
+          initialPatient={selectedPatientForPayment}
           onClose={() => setSelectedPatientForPayment(null)}
-          onSuccess={() => {
+          onSuccess={(payment) => {
             loadDebts()
+            if (selectedPatientForPayment) {
+              setLastPaymentReceipt({
+                payment,
+                patient: selectedPatientForPayment
+              })
+            }
           }}
+        />
+      )}
+
+      {/* Printable Receipt Modal */}
+      {showReceiptModal && lastPaymentReceipt && (
+        <PrintableReceiptModal
+          payment={lastPaymentReceipt.payment}
+          patient={lastPaymentReceipt.patient}
+          onClose={() => setShowReceiptModal(false)}
         />
       )}
     </div>

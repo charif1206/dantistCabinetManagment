@@ -84,6 +84,10 @@ export function registerIpcHandlers(
     return patientRepo.delete(id)
   })
 
+  ipcMain.handle('patients:permanentDelete', (_event, id: string) => {
+    return patientRepo.permanentDelete(id)
+  })
+
   // 4. Appointments
   ipcMain.handle('appointments:getAll', (_event, startDate?: string, endDate?: string) => {
     return appointmentRepo.getAll(startDate, endDate)
@@ -134,6 +138,10 @@ export function registerIpcHandlers(
     return clinicalRepo.savePrescription(prescription)
   })
 
+  ipcMain.handle('prescriptions:delete', (_event, id: string) => {
+    return clinicalRepo.deletePrescription(id)
+  })
+
   // 5b. Drugs Catalog & Prescription Templates (Prompt 4)
   ipcMain.handle('drugs:getAll', (_event, search?: string, category?: string) => {
     return drugsRepo.getAll(search, category)
@@ -174,11 +182,23 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle('invoices:save', (_event, invoice) => {
-    return billingRepo.saveInvoice(invoice)
+    const result = billingRepo.saveInvoice(invoice)
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('dashboard:statsUpdated')
+      }
+    })
+    return result
   })
 
   ipcMain.handle('payments:record', (_event, payment) => {
-    return billingRepo.recordPayment(payment)
+    const result = billingRepo.recordPayment(payment)
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('dashboard:statsUpdated')
+      }
+    })
+    return result
   })
 
   // 8. Dashboard KPIs (with Algerian Dinars)
@@ -195,6 +215,7 @@ export function registerIpcHandlers(
       totalPatientsCount: totalPatients,
       todayRevenueDA: finStats.todayRevenueDA,
       totalDebtsDA: finStats.totalDebtsDA,
+      debtorPatientsCount: finStats.debtorPatientsCount,
       pendingSyncCount: pendingSync
     }
   })
@@ -394,6 +415,19 @@ export function registerIpcHandlers(
 
   ipcMain.handle('analytics:getSpecialtyDistribution', () => {
     return advancedStatsRepo.getSpecialtyDistribution()
+  })
+
+  // 18. Patient Radiographies & Medical Imaging (Prompt 8)
+  ipcMain.handle('radios:getAll', (_event, patientId: string) => {
+    return patientRepo.getRadios(patientId)
+  })
+
+  ipcMain.handle('radios:save', (_event, radio) => {
+    return patientRepo.saveRadio(radio)
+  })
+
+  ipcMain.handle('radios:delete', (_event, id: string) => {
+    return patientRepo.deleteRadio(id)
   })
 }
 

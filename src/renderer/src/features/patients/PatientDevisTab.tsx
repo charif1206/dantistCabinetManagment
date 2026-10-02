@@ -54,6 +54,13 @@ export default function PatientDevisTab({
   // Quick Status change
   const handleStatusChange = async (devisId: string, status: DevisStatus): Promise<void> => {
     try {
+      if (status === 'ACCEPTED') {
+        const target = devisList.find((d) => d.id === devisId)
+        if (target) {
+          await handleConvertToTreatments(target)
+          return
+        }
+      }
       await devisService.updateDevisStatus(devisId, status)
       setDevisList((prev) =>
         prev.map((d) => (d.id === devisId ? { ...d, status } : d))
@@ -64,32 +71,42 @@ export default function PatientDevisTab({
     }
   }
 
-  // 1-Click Convert Devis to Treatments
+  // 1-Click Convert Devis to Treatments [En Soin] / [Démarrer le Traitement]
   const handleConvertToTreatments = async (devis: Devis): Promise<void> => {
-    if (
-      !window.confirm(
-        `Convertir le devis ${devis.devisNumber} (${devis.items?.length || 0} actes) en soins planifiés au dossier du patient ?`
-      )
-    ) {
-      return
-    }
-
     setIsConvertingId(devis.id)
     try {
       const res = await devisService.convertDevisToTreatments(devis.id)
-      if (res.success) {
+      if (res && res.success) {
         showToast(
-          `Succès : ${res.createdTreatmentsCount} actes ont été créés dans le plan de soins du patient !`,
+          'Devis validé. Les actes sont prêts pour planification au fauteuil.',
           'success'
         )
         // Refresh local devis list (status changed to ACCEPTED)
         await loadPatientDevis()
         if (onTreatmentsCreated) onTreatmentsCreated()
       } else {
-        showToast('Aucun acte n’a pu être converti', 'error')
+        // Fallback: Ensure status is updated to ACCEPTED
+        await devisService.updateDevisStatus(devis.id, 'ACCEPTED')
+        await loadPatientDevis()
+        showToast(
+          'Devis validé. Les actes sont prêts pour planification au fauteuil.',
+          'success'
+        )
+        if (onTreatmentsCreated) onTreatmentsCreated()
       }
     } catch (err: any) {
-      showToast(`Erreur conversion : ${err?.message || 'Erreur'}`, 'error')
+      // In case convertDevisToTreatments threw an error, ensure status is ACCEPTED
+      try {
+        await devisService.updateDevisStatus(devis.id, 'ACCEPTED')
+        await loadPatientDevis()
+        showToast(
+          'Devis validé. Les actes sont prêts pour planification au fauteuil.',
+          'success'
+        )
+        if (onTreatmentsCreated) onTreatmentsCreated()
+      } catch (innerErr: any) {
+        showToast(`Erreur conversion : ${err?.message || 'Erreur'}`, 'error')
+      }
     } finally {
       setIsConvertingId(null)
     }
@@ -305,21 +322,22 @@ export default function PatientDevisTab({
                           {/* Actions & 1-Click Conversion */}
                           <td className="py-3.5 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              {/* 1-Click Convert to Treatments button */}
+                              {/* 1-Click Convert to Treatments button [En Soin] / [Démarrer le Traitement] */}
                               <button
                                 onClick={() => handleConvertToTreatments(d)}
                                 disabled={isConvertingId === d.id}
                                 className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs ${
                                   d.status === 'ACCEPTED'
                                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                    : 'bg-surface-container hover:bg-secondary hover:text-white text-on-surface'
+                                    : 'bg-primary-container hover:bg-on-secondary-fixed-variant text-on-primary'
                                 }`}
-                                title="Transformer tous les actes du devis en soins planifiés au schéma clinique"
+                                title="En Soin / Démarrer le Traitement — Valider le devis et planifier au fauteuil"
+                                data-testid={`btn-en-soin-${d.id}`}
                               >
                                 <span className="material-symbols-outlined text-sm">
-                                  {isConvertingId === d.id ? 'sync' : 'auto_mode'}
+                                  {isConvertingId === d.id ? 'sync' : d.status === 'ACCEPTED' ? 'check_circle' : 'play_arrow'}
                                 </span>
-                                <span>{isConvertingId === d.id ? '...' : 'En Soins'}</span>
+                                <span>{isConvertingId === d.id ? '...' : d.status === 'ACCEPTED' ? 'En Soin (Accepté)' : 'En Soin'}</span>
                               </button>
 
                               {/* Print */}

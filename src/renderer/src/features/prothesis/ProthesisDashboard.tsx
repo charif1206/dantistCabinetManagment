@@ -532,7 +532,11 @@ export default function ProthesisDashboard(): JSX.Element {
                       {/* Tooth & Act */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
-                          {order.toothNumber ? (
+                          {order.teeth ? (
+                            <span className="px-1.5 py-0.5 rounded-md bg-secondary/10 text-secondary font-mono font-bold text-xs shrink-0 border border-secondary/20" title={`Dents: ${order.teeth}`}>
+                              {order.teeth}
+                            </span>
+                          ) : order.toothNumber ? (
                             <span className="w-6 h-6 rounded-md bg-secondary/10 text-secondary font-mono font-bold flex items-center justify-center shrink-0 border border-secondary/20">
                               {order.toothNumber}
                             </span>

@@ -299,32 +299,64 @@ export class BillingRepository {
   recordPayment(payment: Omit<Payment, 'id' | 'createdAt'>): Payment {
     const now = new Date().toISOString()
     const id = `pay_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+
+    // Generate sequential official receipt number (REC-2026-XXXX)
+    let receiptNumber = payment.receiptNumber
+    if (!receiptNumber) {
+      const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM payments')
+      const count = ((countStmt.get() as { count: number })?.count || 0) + 1
+      receiptNumber = `REC-2026-${String(count).padStart(4, '0')}`
+    }
+
     const fullPay: Payment = {
       ...payment,
       id,
+      receiptNumber,
       createdAt: now,
       deletedAt: null,
       syncStatus: 'pending'
     }
 
-    const payRow = {
-      id,
-      patientId: payment.patientId,
-      invoiceId: payment.invoiceId,
-      amount: payment.amount,
-      date: payment.date,
-      method: payment.method || 'CASH',
-      notes: payment.notes ?? null,
-      createdAt: now,
-      deletedAt: null,
-      syncStatus: 'pending' as const
-    }
+    // Check if receiptNumber column exists
+    const paymentCols = (this.db.pragma('table_info(payments)') as { name: string }[]).map((c) => c.name)
+    const hasReceiptCol = paymentCols.includes('receiptNumber')
 
-    const stmt = this.db.prepare(`
-      INSERT INTO payments (id, patientId, invoiceId, amount, date, method, notes, createdAt, deletedAt, syncStatus)
-      VALUES (@id, @patientId, @invoiceId, @amount, @date, @method, @notes, @createdAt, @deletedAt, @syncStatus)
-    `)
-    stmt.run(payRow)
+    if (hasReceiptCol) {
+      const payRow = {
+        id,
+        patientId: payment.patientId,
+        invoiceId: payment.invoiceId ?? null,
+        amount: payment.amount,
+        date: payment.date,
+        method: payment.method || 'CASH',
+        receiptNumber,
+        notes: payment.notes ?? null,
+        createdAt: now,
+        deletedAt: null,
+        syncStatus: 'pending' as const
+      }
+      this.db.prepare(`
+        INSERT INTO payments (id, patientId, invoiceId, amount, date, method, receiptNumber, notes, createdAt, deletedAt, syncStatus)
+        VALUES (@id, @patientId, @invoiceId, @amount, @date, @method, @receiptNumber, @notes, @createdAt, @deletedAt, @syncStatus)
+      `).run(payRow)
+    } else {
+      const payRow = {
+        id,
+        patientId: payment.patientId,
+        invoiceId: payment.invoiceId ?? null,
+        amount: payment.amount,
+        date: payment.date,
+        method: payment.method || 'CASH',
+        notes: payment.notes ?? null,
+        createdAt: now,
+        deletedAt: null,
+        syncStatus: 'pending' as const
+      }
+      this.db.prepare(`
+        INSERT INTO payments (id, patientId, invoiceId, amount, date, method, notes, createdAt, deletedAt, syncStatus)
+        VALUES (@id, @patientId, @invoiceId, @amount, @date, @method, @notes, @createdAt, @deletedAt, @syncStatus)
+      `).run(payRow)
+    }
 
     // If attached to an invoice, update paidAmount and remainingAmount
     if (payment.invoiceId) {
@@ -336,6 +368,29 @@ export class BillingRepository {
             updatedAt = ?
         WHERE id = ?
       `).run(payment.amount, payment.amount, payment.amount, now, payment.invoiceId)
+    } else if (payment.patientId) {
+      // Auto-allocate across patient's unpaid/partial invoices from oldest to newest
+      const unpaidInvoices = this.db.prepare(`
+        SELECT id, totalAmount, paidAmount, remainingAmount
+        FROM invoices
+        WHERE patientId = ? AND deletedAt IS NULL AND remainingAmount > 0
+        ORDER BY date ASC, createdAt ASC
+      `).all(payment.patientId) as { id: string; totalAmount: number; paidAmount: number; remainingAmount: number }[]
+
+      let remainingToAllocate = payment.amount
+      for (const inv of unpaidInvoices) {
+        if (remainingToAllocate <= 0) break
+        const alloc = Math.min(remainingToAllocate, inv.remainingAmount)
+        this.db.prepare(`
+          UPDATE invoices
+          SET paidAmount = paidAmount + ?,
+              remainingAmount = MAX(0, totalAmount - (paidAmount + ?)),
+              status = CASE WHEN (paidAmount + ?) >= totalAmount THEN 'PAID' ELSE 'PARTIAL' END,
+              updatedAt = ?
+          WHERE id = ?
+        `).run(alloc, alloc, alloc, now, inv.id)
+        remainingToAllocate -= alloc
+      }
     }
 
     this.syncQueue.enqueue('payment', id, 'INSERT', fullPay)
@@ -343,7 +398,7 @@ export class BillingRepository {
   }
 
   // Financial Stats in Algerian Dinars (DA)
-  getFinancialStats(): { todayRevenueDA: number; totalDebtsDA: number } {
+  getFinancialStats(): { todayRevenueDA: number; totalDebtsDA: number; debtorPatientsCount: number } {
     const today = new Date().toISOString().split('T')[0]
 
     // Daily revenue from payments made today
@@ -353,16 +408,22 @@ export class BillingRepository {
       WHERE deletedAt IS NULL AND date = ?
     `).get(today) as { todayRevenue: number | null }
 
-    // Total outstanding debts from all unpaid / partial invoices
+    // Total outstanding debts from all unpaid / partial invoices for active patients
     const debtRow = this.db.prepare(`
-      SELECT SUM(remainingAmount) as totalDebts
-      FROM invoices
-      WHERE deletedAt IS NULL AND remainingAmount > 0
-    `).get() as { totalDebts: number | null }
+      SELECT 
+        COALESCE(SUM(i.remainingAmount), 0) as totalDebts,
+        COUNT(DISTINCT i.patientId) as debtorPatientsCount
+      FROM invoices i
+      LEFT JOIN patients p ON p.id = i.patientId
+      WHERE i.deletedAt IS NULL 
+        AND i.remainingAmount > 0
+        AND (p.deletedAt IS NULL)
+    `).get() as { totalDebts: number | null; debtorPatientsCount: number | null }
 
     return {
       todayRevenueDA: revRow?.todayRevenue || 0,
-      totalDebtsDA: debtRow?.totalDebts || 0
+      totalDebtsDA: debtRow?.totalDebts || 0,
+      debtorPatientsCount: debtRow?.debtorPatientsCount || 0
     }
   }
 }

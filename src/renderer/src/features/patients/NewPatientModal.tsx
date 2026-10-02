@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useContext } from 'react'
 import { Patient } from '@shared/types'
 import { patientService } from '../../services/patientService'
 import { useToast } from '../../context/ToastContext'
-import { useNavigation } from '../../context/NavigationContext'
+import { NavigationContext } from '../../context/NavigationContext'
 import { validateAlgerianPhone, validateRequiredField } from '../../utils/validators'
 import { ALGERIAN_WILAYAS } from '../../utils/algerianWilayas'
 
@@ -11,48 +11,69 @@ interface NewPatientModalProps {
   onClose: () => void
   onSuccess?: (patient: Patient) => void
   existingPatients?: Patient[]
+  skipNavigation?: boolean
+}
+
+function cleanPhone(phone: string): string {
+  let p = (phone || '').trim().replace(/[\s\-_.()\u00A0]/g, '')
+  if (p.startsWith('+213')) p = '0' + p.slice(4)
+  else if (p.startsWith('00213')) p = '0' + p.slice(5)
+  else if (p.startsWith('213') && p.length === 12) p = '0' + p.slice(3)
+  return p
 }
 
 export const NewPatientModal: React.FC<NewPatientModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  existingPatients = []
+  existingPatients = [],
+  skipNavigation = false
 }) => {
   const { showToast } = useToast()
-  const { openPatient } = useNavigation()
+  const navContext = useContext(NavigationContext)
 
   const getInitialFormState = () => {
-    const randomSuffix = Math.floor(100000 + Math.random() * 900000)
     return {
-      firstName: 'Karim',
-      lastName: 'Mebarki',
-      cin: `16${randomSuffix}`,
-      phone: `0550${randomSuffix}`,
-      email: `karim.mebarki${randomSuffix % 1000}@gmail.com`,
-      dateOfBirth: '1992-06-15',
+      firstName: '',
+      lastName: '',
+      cin: '',
+      phone: '',
+      email: '',
+      dateOfBirth: '',
       gender: 'M' as 'M' | 'F',
       wilaya: '16 - Alger',
-      medicalAlerts: 'Allergie à la Pénicilline',
+      address: '',
+      medicalAlerts: '',
       bloodGroup: 'O+',
-      notes: 'Patient régulier - Première consultation détartrage et contrôle'
+      notes: ''
     }
   }
 
   const [formData, setFormData] = useState(getInitialFormState)
+  const [allPatients, setAllPatients] = useState<Patient[]>(existingPatients)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
       setFormData(getInitialFormState())
       setTouched({})
       setErrors({})
       setIsSubmitting(false)
+
+      if (existingPatients && existingPatients.length > 0) {
+        setAllPatients(existingPatients)
+      } else {
+        patientService
+          .getPatients()
+          .then((pats) => {
+            if (pats && pats.length > 0) setAllPatients(pats)
+          })
+          .catch(() => {})
+      }
     }
-  }, [isOpen])
+  }, [isOpen, existingPatients])
 
   if (!isOpen) return null
 
@@ -76,19 +97,19 @@ export const NewPatientModal: React.FC<NewPatientModalProps> = ({
           )
         }
         // Vérification de doublon
-        const cleaned = value.trim().replace(/[\s\-_.]/g, '')
-        const duplicate = existingPatients.find(
-          (p) => p.phone && p.phone.trim().replace(/[\s\-_.]/g, '') === cleaned
+        const cleaned = cleanPhone(value)
+        const duplicate = allPatients.find(
+          (p) => p.phone && cleanPhone(p.phone) === cleaned
         )
         if (duplicate) {
-          return 'Ce numéro de téléphone existe déjà pour un autre patient.'
+          return `Ce numéro de téléphone est déjà associé au patient ${duplicate.firstName} ${duplicate.lastName} (Dossier N° ${duplicate.patientNumber}).`
         }
         return ''
       }
       case 'cin': {
         if (!value || !value.trim()) return ''
         const cleaned = value.trim().toUpperCase()
-        const duplicate = existingPatients.find(
+        const duplicate = allPatients.find(
           (p) => p.cin && p.cin.trim().toUpperCase() === cleaned
         )
         if (duplicate) {
@@ -143,8 +164,8 @@ export const NewPatientModal: React.FC<NewPatientModalProps> = ({
 
     // S'il y a des erreurs, afficher un Toast d'erreur rouge explicite et bloquer
     if (Object.keys(newErrors).length > 0) {
-      if (phErr && phErr.includes('existe déjà')) {
-        showToast('Ce numéro de téléphone existe déjà pour un autre patient', 'error')
+      if (phErr && (phErr.includes('est déjà associé') || phErr.includes('existe déjà'))) {
+        showToast(phErr, 'error')
       } else if (cinErr && cinErr.includes('existe déjà')) {
         showToast('Ce numéro CIN existe déjà pour un autre patient', 'error')
       } else {
@@ -163,7 +184,9 @@ export const NewPatientModal: React.FC<NewPatientModalProps> = ({
       )
       onClose()
       onSuccess?.(created)
-      openPatient(created, 'overview')
+      if (!skipNavigation && navContext) {
+        navContext.openPatient(created, 'overview')
+      }
     } catch (err: any) {
       showToast(err?.message || 'Erreur lors de la création du patient', 'error')
     } finally {
@@ -343,22 +366,37 @@ export const NewPatientModal: React.FC<NewPatientModalProps> = ({
             </div>
           </div>
 
-          {/* Wilaya (58 Wilayas) */}
-          <div>
-            <label className="block text-xs font-semibold text-on-surface mb-1">
-              Wilaya de Résidence (Algérie)
-            </label>
-            <select
-              value={formData.wilaya}
-              onChange={(e) => handleChange('wilaya', e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-outline-variant bg-surface text-sm focus:ring-2 focus:ring-secondary/40 focus:border-secondary"
-            >
-              {ALGERIAN_WILAYAS.map((w) => (
-                <option key={w.code} value={w.name}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
+          {/* Wilaya & Adresse */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-on-surface mb-1">
+                Wilaya de Résidence (Algérie)
+              </label>
+              <select
+                value={formData.wilaya}
+                onChange={(e) => handleChange('wilaya', e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-outline-variant bg-surface text-sm focus:ring-2 focus:ring-secondary/40 focus:border-secondary"
+              >
+                {ALGERIAN_WILAYAS.map((w) => (
+                  <option key={w.code} value={w.name}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-on-surface mb-1">
+                Adresse / Commune
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: 14 Rue Didouche Mourad"
+                value={formData.address}
+                onChange={(e) => handleChange('address', e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-outline-variant bg-surface text-sm focus:ring-2 focus:ring-secondary/40 focus:border-secondary"
+              />
+            </div>
           </div>
 
           {/* Alertes Médicales & Allergies */}

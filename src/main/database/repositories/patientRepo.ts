@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import { Patient } from '@shared/types'
+import { Patient, PatientRadio } from '@shared/types'
 import { SyncQueueRepository } from './syncQueueRepo'
 
 export class PatientRepository {
@@ -39,20 +39,41 @@ export class PatientRepository {
     return (row as Patient) || null
   }
 
+  private cleanPhone(phone: string): string {
+    let p = (phone || '').trim().replace(/[\s\-_.()\u00A0]/g, '')
+    if (p.startsWith('+213')) {
+      p = '0' + p.slice(4)
+    } else if (p.startsWith('00213')) {
+      p = '0' + p.slice(5)
+    } else if (p.startsWith('213') && p.length === 12) {
+      p = '0' + p.slice(3)
+    }
+    return p
+  }
+
   getByPhone(phone: string, excludeId?: string): Patient | null {
-    const cleaned = phone.trim().replace(/[\s\-_.]/g, '')
+    const cleaned = this.cleanPhone(phone)
+    if (!cleaned) return null
+
     const sql = excludeId
       ? `SELECT * FROM patients
          WHERE deletedAt IS NULL
-           AND replace(replace(replace(replace(phone, ' ', ''), '-', ''), '_', ''), '.', '') = ?
+           AND replace(replace(replace(replace(replace(phone, ' ', ''), '-', ''), '_', ''), '.', ''), '(', '') = ?
            AND id != ?`
       : `SELECT * FROM patients
          WHERE deletedAt IS NULL
-           AND replace(replace(replace(replace(phone, ' ', ''), '-', ''), '_', ''), '.', '') = ?`
+           AND replace(replace(replace(replace(replace(phone, ' ', ''), '-', ''), '_', ''), '.', ''), '(', '') = ?`
 
     const stmt = this.db.prepare(sql)
     const row = excludeId ? stmt.get(cleaned, excludeId) : stmt.get(cleaned)
-    return (row as Patient) || null
+    if (row) return row as Patient
+
+    // Fallback search across all active patients
+    const all = this.getAll()
+    const found = all.find(
+      (p) => (!excludeId || p.id !== excludeId) && this.cleanPhone(p.phone) === cleaned
+    )
+    return found || null
   }
 
   save(
@@ -69,7 +90,9 @@ export class PatientRepository {
     if (patientData.phone) {
       const duplicate = this.getByPhone(patientData.phone, patientData.id)
       if (duplicate) {
-        throw new Error('Ce numéro de téléphone existe déjà pour un autre patient.')
+        throw new Error(
+          `Ce numéro de téléphone est déjà associé au patient ${duplicate.firstName} ${duplicate.lastName} (Dossier N° ${duplicate.patientNumber}).`
+        )
       }
     }
 
@@ -154,8 +177,107 @@ export class PatientRepository {
     return true
   }
 
+  // Hard delete (permanent removal of patient and associated records)
+  permanentDelete(id: string): boolean {
+    const existing = this.db.prepare('SELECT id FROM patients WHERE id = ?').get(id)
+    if (!existing) return false
+
+    const tx = this.db.transaction(() => {
+      try { this.db.prepare('DELETE FROM waiting_room WHERE patientId = ?').run(id) } catch {}
+      try { this.db.prepare('DELETE FROM tooth_records WHERE patientId = ?').run(id) } catch {}
+      try { this.db.prepare('DELETE FROM medical_antecedents WHERE patientId = ?').run(id) } catch {}
+      try { this.db.prepare('DELETE FROM clinical_notes WHERE patientId = ?').run(id) } catch {}
+      try { this.db.prepare('DELETE FROM prescriptions WHERE patientId = ?').run(id) } catch {}
+      try { this.db.prepare('DELETE FROM prothesis_orders WHERE patientId = ?').run(id) } catch {}
+      try { this.db.prepare('DELETE FROM lab_tests WHERE patientId = ?').run(id) } catch {}
+      try { this.db.prepare('DELETE FROM devis WHERE patientId = ?').run(id) } catch {}
+      try { this.db.prepare('DELETE FROM patient_radios WHERE patientId = ?').run(id) } catch {}
+      try {
+        this.db.prepare('DELETE FROM payments WHERE invoiceId IN (SELECT id FROM invoices WHERE patientId = ?)').run(id)
+        this.db.prepare('DELETE FROM invoice_items WHERE invoiceId IN (SELECT id FROM invoices WHERE patientId = ?)').run(id)
+        this.db.prepare('DELETE FROM invoices WHERE patientId = ?').run(id)
+      } catch {}
+      try { this.db.prepare('DELETE FROM appointments WHERE patientId = ?').run(id) } catch {}
+      this.db.prepare('DELETE FROM patients WHERE id = ?').run(id)
+      this.syncQueue.enqueue('patient', id, 'DELETE', { id, permanent: true })
+    })
+
+    tx()
+    return true
+  }
+
   getCount(): number {
     const row = this.db.prepare('SELECT count(*) as count FROM patients WHERE deletedAt IS NULL').get() as { count: number }
     return row.count
+  }
+
+  // Radiographies & Imaging (Prompt 8)
+  getRadios(patientId: string): PatientRadio[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM patient_radios
+      WHERE patientId = ? AND deletedAt IS NULL
+      ORDER BY date DESC, createdAt DESC
+    `)
+    return stmt.all(patientId) as PatientRadio[]
+  }
+
+  saveRadio(
+    radioData: Omit<PatientRadio, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
+  ): PatientRadio {
+    const now = new Date().toISOString()
+    const id = radioData.id || `rad_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+    const isNew = !radioData.id || !this.db.prepare('SELECT id FROM patient_radios WHERE id = ?').get(id)
+
+    if (isNew) {
+      const radio: PatientRadio = {
+        id,
+        patientId: radioData.patientId,
+        radioType: radioData.radioType,
+        toothNumber: radioData.toothNumber ?? null,
+        date: radioData.date || now.split('T')[0],
+        imageData: radioData.imageData,
+        fileName: radioData.fileName ?? null,
+        fileSize: radioData.fileSize ?? null,
+        notes: radioData.notes ?? null,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null
+      }
+
+      const stmt = this.db.prepare(`
+        INSERT INTO patient_radios (id, patientId, radioType, toothNumber, date, imageData, fileName, fileSize, notes, createdAt, updatedAt, deletedAt)
+        VALUES (@id, @patientId, @radioType, @toothNumber, @date, @imageData, @fileName, @fileSize, @notes, @createdAt, @updatedAt, @deletedAt)
+      `)
+      stmt.run(radio)
+      return radio
+    } else {
+      const stmt = this.db.prepare(`
+        UPDATE patient_radios
+        SET radioType = @radioType, toothNumber = @toothNumber, date = @date,
+            imageData = @imageData, fileName = @fileName, fileSize = @fileSize,
+            notes = @notes, updatedAt = @updatedAt
+        WHERE id = @id
+      `)
+      stmt.run({
+        id,
+        radioType: radioData.radioType,
+        toothNumber: radioData.toothNumber ?? null,
+        date: radioData.date || now.split('T')[0],
+        imageData: radioData.imageData,
+        fileName: radioData.fileName ?? null,
+        fileSize: radioData.fileSize ?? null,
+        notes: radioData.notes ?? null,
+        updatedAt: now
+      })
+      const stmtGet = this.db.prepare('SELECT * FROM patient_radios WHERE id = ?')
+      return stmtGet.get(id) as PatientRadio
+    }
+  }
+
+  deleteRadio(id: string): boolean {
+    const now = new Date().toISOString()
+    const stmt = this.db.prepare('UPDATE patient_radios SET deletedAt = ?, updatedAt = ? WHERE id = ?')
+    const res = stmt.run(now, now, id)
+    return res.changes > 0
   }
 }

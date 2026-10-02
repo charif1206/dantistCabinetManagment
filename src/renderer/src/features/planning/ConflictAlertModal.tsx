@@ -82,8 +82,23 @@ export default function ConflictAlertModal({
           </div>
         </div>
 
+        {/* Notice Fauteuil Disponible */}
+        <div className="bg-amber-50/90 border border-amber-300 rounded-xl p-3.5 flex items-start gap-3">
+          <span className="material-symbols-outlined text-amber-800 text-xl shrink-0 mt-0.5">
+            airline_seat_recline_extra
+          </span>
+          <div className="text-xs text-amber-950 leading-relaxed space-y-1">
+            <p className="font-bold text-amber-950">
+              هذا الوقت محجوز مسبقاً للمريض [{conflictingAppointment.patientName}]، ولكن يمكن إضافة المريض في نفس الوقت إذا كان هناك كرسي عمل شاغر (Fauteuil disponible).
+            </p>
+            <p className="text-[11px] text-amber-900">
+              Ce créneau est déjà réservé dans l'agenda, mais vous pouvez valider le rendez-vous si un autre fauteuil de soins est disponible au cabinet.
+            </p>
+          </div>
+        </div>
+
         {/* Suggested Alternative Slot */}
-        <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200 flex items-center justify-between gap-3">
+        <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
               <span className="material-symbols-outlined text-lg">auto_fix_high</span>
@@ -103,9 +118,10 @@ export default function ConflictAlertModal({
               type="button"
               aria-label={`Choisir le créneau alternatif : ${suggestedTimeDisplay}`}
               onClick={() => onAcceptSuggestedTime(suggestedIso)}
-              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+              className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
             >
-              Choisir {suggestedTimeDisplay}
+              <span className="material-symbols-outlined text-sm">schedule</span>
+              <span>Choisir le créneau alternatif suggéré: {suggestedTimeDisplay}</span>
             </button>
           )}
         </div>
@@ -121,17 +137,18 @@ export default function ConflictAlertModal({
           </button>
           <button
             type="button"
-            onClick={onForceSave}
+            onClick={onModifyTime}
             className="w-full sm:w-auto px-4 py-2 rounded-xl border border-outline-variant hover:bg-surface-container text-xs font-semibold text-on-surface transition-colors cursor-pointer"
           >
-            Forcer le créneau
+            Changer l'heure
           </button>
           <button
             type="button"
-            onClick={onModifyTime}
-            className="w-full sm:w-auto px-4 py-2 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary text-xs font-bold shadow-xs transition-all cursor-pointer"
+            onClick={onForceSave}
+            className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
           >
-            Changer l'heure
+            <span className="material-symbols-outlined text-sm">airline_seat_recline_extra</span>
+            <span>Réserver sur un Fauteuil Libre / Forcer la réservation</span>
           </button>
         </div>
       </div>

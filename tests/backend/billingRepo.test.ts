@@ -349,6 +349,7 @@ describe('BillingRepository - Invoicing, Algerian Dinars (DA) & Debts Management
       // Check against getFinancialStats()
       const stats = billingRepo.getFinancialStats()
       expect(stats.totalDebtsDA).toBe(45000)
+      expect(stats.debtorPatientsCount).toBe(2)
     })
   })
 })

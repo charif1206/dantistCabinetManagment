@@ -151,7 +151,7 @@ describe('PatientRepository - Backend & SQLite Integration', () => {
           phone: '0555998877',
           wilaya: 'Tipaza'
         })
-      }).toThrow('Ce numéro de téléphone existe déjà pour un autre patient.')
+      }).toThrow(/Ce numéro de téléphone est déjà associé au patient/)
 
       // Also blocks formatted equivalent (spaces or dashes)
       expect(() => {
@@ -161,7 +161,7 @@ describe('PatientRepository - Backend & SQLite Integration', () => {
           phone: '05 55 99 88 77',
           wilaya: 'Alger'
         })
-      }).toThrow('Ce numéro de téléphone existe déjà pour un autre patient.')
+      }).toThrow(/Ce numéro de téléphone est déjà associé au patient/)
     })
 
     it('allows updating an existing patient without triggering self-duplicate phone error', () => {
@@ -208,6 +208,21 @@ describe('PatientRepository - Backend & SQLite Integration', () => {
 
       expect(patient2.id).toBeDefined()
       expect(patient2.firstName).toBe('Chafik')
+    })
+
+    it('permanently deletes patient record and related data', () => {
+      const patient = patientRepo.save({
+        firstName: 'Walid',
+        lastName: 'Zitouni',
+        phone: '0555887766',
+        wilaya: 'Blida'
+      })
+
+      expect(patientRepo.getById(patient.id)).not.toBeNull()
+
+      const result = patientRepo.permanentDelete(patient.id)
+      expect(result).toBe(true)
+      expect(patientRepo.getById(patient.id)).toBeNull()
     })
   })
 })

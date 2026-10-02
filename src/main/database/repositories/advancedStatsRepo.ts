@@ -160,11 +160,12 @@ export class AdvancedStatsRepository {
   getSpecialtyDistribution(): SpecialtyDistribution[] {
     const rows = this.db.prepare(`
       SELECT 
-        COALESCE(m.specialty, 'SOINS_CONSERVATEURS') as specialty,
+        COALESCE(m.category, 'SOINS') as specialty,
         COUNT(t.id) as treatmentCount,
         COALESCE(SUM(t.price), 0) as revenueDA
       FROM treatments t
       LEFT JOIN medical_acts m ON t.actId = m.id
+      WHERE t.deletedAt IS NULL
       GROUP BY specialty
       ORDER BY revenueDA DESC
     `).all() as { specialty: string; treatmentCount: number; revenueDA: number }[]
@@ -177,9 +178,12 @@ export class AdvancedStatsRepository {
       PROTHESE_FIXE: 'Prothèse Fixe',
       PROTHESE_AMOVIBLE: 'Prothèse Amovible',
       CHIRURGIE: 'Chirurgie Buccale',
+      SOINS: 'Soins & Esthétique',
       SOINS_CONSERVATEURS: 'Soins & Esthétique',
       ENDODONTIE: 'Endodontie',
-      PARODONTOLOGIE: 'Parodontologie'
+      PARODONTIE: 'Parodontologie',
+      PARODONTOLOGIE: 'Parodontologie',
+      CONSULTATION_IMAGERIE: 'Consultation & Imagerie'
     }
 
     return rows.map((r) => ({
@@ -191,3 +195,4 @@ export class AdvancedStatsRepository {
     }))
   }
 }
+

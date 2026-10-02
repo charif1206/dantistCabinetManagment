@@ -121,6 +121,7 @@ describe('Frontend Invoicing (CreateInvoiceModal) & Debts Management (DebtsManag
     window.api.recordPayment = vi.fn().mockImplementation((p) =>
       Promise.resolve({
         id: 'pay-rec-101',
+        receiptNumber: 'REC-2026-0044',
         createdAt: new Date().toISOString(),
         ...p
       })
@@ -360,7 +361,156 @@ describe('Frontend Invoicing (CreateInvoiceModal) & Debts Management (DebtsManag
       })
 
       expect(onSuccess).toHaveBeenCalled()
+
+      // Shows direct button to print receipt and Terminer button
+      expect(screen.getByRole('button', { name: /Imprimer le Reçu d'Encaissement/i })).toBeInTheDocument()
+      const finishBtn = screen.getByRole('button', { name: /Terminer/i })
+      fireEvent.click(finishBtn)
       expect(onClose).toHaveBeenCalled()
+    })
+
+    // =========================================================================
+    // 4. Prompt 6: Cycle de recouvrement, Recettes du Jour, et Reçu d'Encaissement
+    // =========================================================================
+    describe('4. Prompt 6: Full Debt Settlement, Printable Receipt & Dashboard Revenue', () => {
+      const patientWith8000Debt: Patient = {
+        id: 'pat-debt-8000',
+        patientNumber: 'DZ-2026-0044',
+        firstName: 'Karim',
+        lastName: 'Zitouni',
+        phone: '0550889900',
+        wilaya: '16 - Alger',
+        createdAt: '2026-01-01',
+        updatedAt: '2026-01-01'
+      }
+
+      const invoiceWith8000Debt: Invoice = {
+        id: 'inv-8000',
+        invoiceNumber: 'FAC-2026-0044',
+        patientId: patientWith8000Debt.id,
+        patientName: 'Karim Zitouni',
+        date: '2026-10-02',
+        totalAmount: 18000,
+        paidAmount: 10000,
+        remainingAmount: 8000,
+        status: 'PARTIAL',
+        paymentMethod: 'CASH',
+        itemsJson: '[]',
+        createdAt: '2026-10-02',
+        updatedAt: '2026-10-02'
+      }
+
+      it('settles remaining 8,000 DA debt to 0 DA and transitions invoice status to PAID ("Réglée")', async () => {
+        let currentInvoices = [invoiceWith8000Debt]
+        window.api.getPatients = vi.fn().mockResolvedValue([patientWith8000Debt])
+        window.api.getInvoices = vi.fn().mockImplementation(() => Promise.resolve(currentInvoices))
+        window.api.recordPayment = vi.fn().mockImplementation((p) => {
+          currentInvoices = [
+            {
+              ...invoiceWith8000Debt,
+              paidAmount: 18000,
+              remainingAmount: 0,
+              status: 'PAID'
+            }
+          ]
+          return Promise.resolve({
+            id: 'pay-8000',
+            receiptNumber: 'REC-2026-0044',
+            createdAt: new Date().toISOString(),
+            ...p
+          })
+        })
+
+        render(
+          <ToastProvider>
+            <ToastContainer />
+            <DebtsManager />
+          </ToastProvider>
+        )
+
+        await waitFor(() => {
+          expect(screen.getByText('Karim Zitouni')).toBeInTheDocument()
+          expect(screen.getAllByText(/8[\s,.]?000.*DA/).length).toBeGreaterThanOrEqual(1)
+        })
+
+        // Click + Encaisser
+        const encaisserBtn = screen.getByRole('button', { name: /\+ Encaisser/i })
+        fireEvent.click(encaisserBtn)
+
+        await waitFor(() => {
+          expect(screen.getByRole('heading', { name: 'Enregistrer un Paiement' })).toBeInTheDocument()
+        })
+
+        // The amount input should default to 8,000 DA
+        expect(screen.getByDisplayValue('8000')).toBeInTheDocument()
+
+        // Submit the 8,000 DA payment
+        const submitBtn = screen.getByRole('button', { name: /Valider l’encaissement/i })
+        fireEvent.click(submitBtn)
+
+        await waitFor(() => {
+          expect(window.api.recordPayment).toHaveBeenCalledWith(
+            expect.objectContaining({
+              patientId: patientWith8000Debt.id,
+              amount: 8000
+            })
+          )
+        })
+
+        // Prompt 2: Direct button [Imprimer le Reçu d'Encaissement] is available immediately after payment
+        expect(screen.getAllByRole('button', { name: /Imprimer le Reçu d'Encaissement/i }).length).toBeGreaterThan(0)
+
+        // After debt settlement, banner confirms 0 DA if settled and invoice Réglée
+        await waitFor(() => {
+          expect(
+            screen.getByText(/Le solde a été mis à jour immédiatement \(0 DA si soldé\) et la facture est désormais Réglée\./i)
+          ).toBeInTheDocument()
+        })
+      })
+
+      it('opens official PrintableReceiptModal with sequential number, doctor name, and amount in words and figures', async () => {
+        window.api.getPatients = vi.fn().mockResolvedValue([patientWith8000Debt])
+        window.api.getInvoices = vi.fn().mockResolvedValue([invoiceWith8000Debt])
+
+        render(
+          <ToastProvider>
+            <ToastContainer />
+            <DebtsManager />
+          </ToastProvider>
+        )
+
+        await waitFor(() => {
+          expect(screen.getByText('Karim Zitouni')).toBeInTheDocument()
+        })
+
+        // Open payment
+        fireEvent.click(screen.getByRole('button', { name: /\+ Encaisser/i }))
+
+        await waitFor(() => {
+          expect(screen.getByRole('heading', { name: 'Enregistrer un Paiement' })).toBeInTheDocument()
+          expect(screen.getByDisplayValue('8000')).toBeInTheDocument()
+        })
+
+        // Submit payment
+        fireEvent.click(screen.getByRole('button', { name: /Valider l’encaissement/i }))
+
+        await waitFor(() => {
+          expect(screen.getAllByRole('button', { name: /Imprimer le Reçu d'Encaissement/i }).length).toBeGreaterThan(0)
+        })
+
+        // Click [Imprimer le Reçu d'Encaissement]
+        const printBtns = screen.getAllByRole('button', { name: /Imprimer le Reçu d'Encaissement/i })
+        fireEvent.click(printBtns[0])
+
+        await waitFor(() => {
+          expect(screen.getAllByText(/Dr Mohamed Amrani/i).length).toBeGreaterThanOrEqual(1)
+        })
+        expect(screen.getByText('Cabinet Dentaire Médico-Chirurgical DentaFlow')).toBeInTheDocument()
+        expect(screen.getAllByText(/REC-2026-/i).length).toBeGreaterThanOrEqual(1)
+        expect(screen.getAllByText(/8[\s,.]?000.*DA/).length).toBeGreaterThanOrEqual(1)
+        expect(screen.getByText(/Huit Mille Dinars Algériens/i)).toBeInTheDocument()
+        expect(screen.getByText(/Zone Cachet & Signature du Praticien/i)).toBeInTheDocument()
+      })
     })
   })
 })

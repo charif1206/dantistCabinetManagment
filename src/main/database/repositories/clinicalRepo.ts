@@ -174,6 +174,19 @@ export class ClinicalRepository {
     return fullPres
   }
 
+  deletePrescription(id: string): boolean {
+    const tx = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM prescription_items WHERE prescriptionId = ?').run(id)
+      const result = this.db.prepare('DELETE FROM prescriptions WHERE id = ?').run(id)
+      return result.changes > 0
+    })
+    const deleted = tx()
+    if (deleted) {
+      this.syncQueue.enqueue('prescription', id, 'DELETE', { id })
+    }
+    return deleted
+  }
+
   // Medical Acts (Catalogue d'actes dentaires - 8 Spécialités)
   getMedicalActs(category?: string, search?: string): MedicalAct[] {
     let query = 'SELECT * FROM medical_acts WHERE deletedAt IS NULL AND active = 1'

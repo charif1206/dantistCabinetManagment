@@ -179,7 +179,7 @@ export function validateAppointmentBooking(
       suggestedAlternativeIso: alt.suggestedIso,
       suggestedAlternativeDisplay: alt.suggestedTimeDisplay,
       reason: 'CONFLICT',
-      error: `Attention : Conflit d'horaire pour ${newApt.dentistName || 'le praticien'} avec le rendez-vous de ${conflict.patientName}.`
+      error: `Conflit d'horaire pour ${newApt.dentistName || 'le praticien'} : هذا الوقت محجوز مسبقاً للمريض [${conflict.patientName}]، ولكن يمكن إضافة المريض في نفس الوقت إذا كان هناك كرسي عمل شاغر (Fauteuil disponible).`
     }
   }
 

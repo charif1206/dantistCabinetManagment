@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react'
 import { Patient, Invoice, Payment } from '@shared/types'
 import { billingService } from '../../services/billingService'
 import { patientService } from '../../services/patientService'
+import PrintableReceiptModal from './PrintableReceiptModal'
 
 interface RecordPaymentModalProps {
   initialPatientId?: string
+  initialPatient?: Patient
   initialInvoiceId?: string
   defaultAmount?: number
   onClose: () => void
@@ -13,13 +15,14 @@ interface RecordPaymentModalProps {
 
 export default function RecordPaymentModal({
   initialPatientId,
+  initialPatient,
   initialInvoiceId,
   defaultAmount,
   onClose,
   onSuccess
 }: RecordPaymentModalProps): JSX.Element {
-  const [patients, setPatients] = useState<Patient[]>([])
-  const [patientId, setPatientId] = useState(initialPatientId || '')
+  const [patients, setPatients] = useState<Patient[]>(initialPatient ? [initialPatient] : [])
+  const [patientId, setPatientId] = useState(initialPatient?.id || initialPatientId || '')
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [invoiceId, setInvoiceId] = useState(initialInvoiceId || '')
   const [amount, setAmount] = useState<number>(defaultAmount || 3000)
@@ -27,6 +30,8 @@ export default function RecordPaymentModal({
   const [method, setMethod] = useState<Payment['method']>('CASH')
   const [notes, setNotes] = useState('Règlement reçu en espèces à la caisse du cabinet')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [savedPayment, setSavedPayment] = useState<Payment | null>(null)
+  const [showReceiptModal, setShowReceiptModal] = useState(false)
 
   useEffect(() => {
     patientService.getPatients().then((list) => {
@@ -69,8 +74,8 @@ export default function RecordPaymentModal({
         method,
         notes
       })
+      setSavedPayment(result)
       onSuccess(result)
-      onClose()
     } finally {
       setIsSubmitting(false)
     }
@@ -86,50 +91,135 @@ export default function RecordPaymentModal({
               <span className="material-symbols-outlined text-xl">payments</span>
             </div>
             <div>
-              <h2 className="font-bold text-base text-on-surface">Enregistrer un Paiement</h2>
+              <h2 className="font-bold text-base text-on-surface">
+                {savedPayment ? "Reçu d'Encaissement" : 'Enregistrer un Paiement'}
+              </h2>
               <span className="text-xs text-on-surface-variant font-medium">Caisse & Règlements (DA)</span>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-outline hover:text-on-surface hover:bg-surface-container transition-colors"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-outline hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
           >
             <span className="material-symbols-outlined text-xl">close</span>
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
-          {/* Patient Selection */}
-          <div>
-            <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">
-              Patient
-            </label>
-            {initialPatientId && selectedPatient ? (
-              <div className="p-3 rounded-xl bg-surface border border-outline-variant/60 flex justify-between items-center">
-                <div>
-                  <div className="text-xs font-bold text-on-surface">
-                    {selectedPatient.firstName} {selectedPatient.lastName}
-                  </div>
-                  <div className="text-[11px] text-outline font-mono">{selectedPatient.patientNumber}</div>
+        {/* Body: Success receipt action view or input form */}
+        {savedPayment ? (
+          <div className="flex-1 overflow-y-auto p-6 flex flex-col justify-between space-y-6">
+            <div className="space-y-4 text-center py-4">
+              <div className="w-16 h-16 rounded-3xl bg-tertiary-fixed text-on-tertiary-container flex items-center justify-center mx-auto shadow-sm">
+                <span className="material-symbols-outlined text-3xl">check_circle</span>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-lg text-on-surface">Paiement Enregistré !</h3>
+                <p className="text-xs text-on-surface-variant mt-1">
+                  L'encaissement a été validé et le solde a été mis à jour.
+                </p>
+              </div>
+
+              <div className="bg-surface-container-low border border-outline-variant/60 rounded-2xl p-4 text-left space-y-2.5 text-xs">
+                <div className="flex justify-between items-center pb-2 border-b border-outline-variant/40">
+                  <span className="text-outline uppercase text-[10px] font-bold">N° Reçu Officiel</span>
+                  <span className="font-mono font-bold text-secondary text-sm">
+                    {savedPayment.receiptNumber || 'REC-2026-0001'}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-outline text-[11px]">Patient</span>
+                  <span className="font-bold text-on-surface">
+                    {selectedPatient?.firstName} {selectedPatient?.lastName}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-outline text-[11px]">Montant Encaissé</span>
+                  <span className="font-mono font-bold text-base text-on-tertiary-container">
+                    {savedPayment.amount.toLocaleString()} DA
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-outline text-[11px]">Mode</span>
+                  <span className="font-semibold text-on-surface">
+                    {savedPayment.method === 'CASH'
+                      ? 'Espèces'
+                      : savedPayment.method === 'CHECK'
+                        ? 'Chèque'
+                        : 'BaridiMob / Virement'}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-outline text-[11px]">Date</span>
+                  <span className="font-mono text-on-surface">{savedPayment.date}</span>
                 </div>
               </div>
-            ) : (
-              <select
-                value={patientId}
-                onChange={(e) => setPatientId(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl bg-surface border border-outline-variant text-xs text-on-surface cursor-pointer"
+            </div>
+
+            <div className="space-y-2.5 pt-4 border-t border-outline-variant/40">
+              <button
+                type="button"
+                onClick={() => setShowReceiptModal(true)}
+                className="w-full py-3 px-4 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                {patients.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.firstName} {p.lastName} ({p.patientNumber})
-                  </option>
-                ))}
-              </select>
+                <span className="material-symbols-outlined text-lg">print</span>
+                <span>Imprimer le Reçu d'Encaissement</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 px-4 rounded-xl border border-outline-variant/80 hover:bg-surface-container text-on-surface-variant text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Terminer
+              </button>
+            </div>
+
+            {showReceiptModal && selectedPatient && (
+              <PrintableReceiptModal
+                payment={savedPayment}
+                patient={selectedPatient}
+                invoice={selectedInvoice}
+                onClose={() => setShowReceiptModal(false)}
+              />
             )}
           </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+            {/* Patient Selection */}
+            <div>
+              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">
+                Patient
+              </label>
+              {initialPatientId && selectedPatient ? (
+                <div className="p-3 rounded-xl bg-surface border border-outline-variant/60 flex justify-between items-center">
+                  <div>
+                    <div className="text-xs font-bold text-on-surface">
+                      {selectedPatient.firstName} {selectedPatient.lastName}
+                    </div>
+                    <div className="text-[11px] text-outline font-mono">{selectedPatient.patientNumber}</div>
+                  </div>
+                </div>
+              ) : (
+                <select
+                  value={patientId}
+                  onChange={(e) => setPatientId(e.target.value)}
+                  className="w-full h-10 px-3 rounded-xl bg-surface border border-outline-variant text-xs text-on-surface cursor-pointer"
+                >
+                  {patients.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.firstName} {p.lastName} ({p.patientNumber})
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
 
-          {/* Invoice Selection if available */}
+            {/* Invoice Selection if available */}
           {invoices.length > 0 && (
             <div>
               <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">
@@ -256,7 +346,17 @@ export default function RecordPaymentModal({
             </button>
           </div>
         </form>
+      )}
       </div>
+
+      {/* Printable Receipt Modal */}
+      {showReceiptModal && savedPayment && selectedPatient && (
+        <PrintableReceiptModal
+          payment={savedPayment}
+          patient={selectedPatient}
+          onClose={() => setShowReceiptModal(false)}
+        />
+      )}
     </div>
   )
 }

@@ -364,4 +364,115 @@ describe('PrescriptionBuilder & PrintablePrescription Frontend Tests', () => {
       })
     })
   })
+
+  // =========================================================================
+  // 6. Edition et Suppression d'Ordonnances (Prompt 5)
+  // =========================================================================
+  describe('6. Prescription Modification and Deletion Workflows (Prompt 5)', () => {
+    const existingPrescription: Prescription = {
+      id: 'presc-edit-001',
+      patientId: samplePatient.id,
+      patientName: 'Farid Zidane',
+      dentistName: 'Dr. Mohamed Amrani',
+      date: '2026-09-24',
+      notes: 'Traitement post-opératoire',
+      items: [
+        {
+          id: 'item-1',
+          prescriptionId: 'presc-edit-001',
+          medicineName: 'Bi-Rodogyl',
+          dosage: '1.5 MUI / 250 mg',
+          form: 'Comprimé',
+          instructions: '1 cp 3 fois par jour'
+        }
+      ],
+      createdAt: '2026-09-24',
+      updatedAt: '2026-09-24'
+    }
+
+    it('renders [Modifier] and [Supprimer] action buttons for each registered prescription', async () => {
+      window.api.getPrescriptions = vi.fn().mockResolvedValue([existingPrescription])
+
+      renderBuilder()
+
+      await waitFor(() => {
+        expect(screen.getByText('Ordonnance du 2026-09-24 · Dr. Mohamed Amrani')).toBeInTheDocument()
+      })
+
+      // Both Modifier and Supprimer action buttons must be present
+      expect(screen.getByRole('button', { name: /modifier/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /supprimer/i })).toBeInTheDocument()
+    })
+
+    it('opens prescription editor prefilled with current prescription data upon clicking [Modifier] and saves update', async () => {
+      window.api.getPrescriptions = vi.fn().mockResolvedValue([existingPrescription])
+
+      renderBuilder()
+
+      await waitFor(() => {
+        expect(screen.getByText('Ordonnance du 2026-09-24 · Dr. Mohamed Amrani')).toBeInTheDocument()
+      })
+
+      // Click Modifier
+      const editBtn = screen.getByRole('button', { name: /modifier/i })
+      fireEvent.click(editBtn)
+
+      // Modal title indicates modification mode
+      await waitFor(() => {
+        expect(screen.getByText(/Modifier l'Ordonnance/i)).toBeInTheDocument()
+      })
+
+      // Prefilled prescription item is visible
+      expect(screen.getAllByText('Bi-Rodogyl').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('1.5 MUI / 250 mg').length).toBeGreaterThan(0)
+
+      // Submit modifications
+      const saveBtn = screen.getByRole('button', { name: /Enregistrer les modifications/i })
+      fireEvent.click(saveBtn)
+
+      await waitFor(() => {
+        expect(window.api.savePrescription).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: 'presc-edit-001',
+            patientId: samplePatient.id,
+            patientName: 'Farid Zidane'
+          })
+        )
+        expect(screen.getByText(/Ordonnance modifiée avec succès/i)).toBeInTheDocument()
+      })
+    })
+
+    it('displays warning confirmation modal with exact text upon clicking [Supprimer] and confirms deletion', async () => {
+      window.api.getPrescriptions = vi.fn().mockResolvedValue([existingPrescription])
+      window.api.deletePrescription = vi.fn().mockResolvedValue(true)
+
+      renderBuilder()
+
+      await waitFor(() => {
+        expect(screen.getByText('Ordonnance du 2026-09-24 · Dr. Mohamed Amrani')).toBeInTheDocument()
+      })
+
+      // Click Supprimer
+      const deleteBtn = screen.getByRole('button', { name: /supprimer/i })
+      fireEvent.click(deleteBtn)
+
+      // Warning confirmation dialog appears with exact date text
+      await waitFor(() => {
+        expect(screen.getByText("Suppression de l'Ordonnance")).toBeInTheDocument()
+        expect(
+          screen.getByText(/Êtes-vous sûr de vouloir supprimer cette ordonnance du 2026-09-24 \? Cette action est irréversible\./i)
+        ).toBeInTheDocument()
+      })
+
+      // Confirm deletion
+      const confirmDeleteBtn = screen.getByRole('button', { name: /Oui, Supprimer/i })
+      fireEvent.click(confirmDeleteBtn)
+
+      await waitFor(() => {
+        expect(window.api.deletePrescription).toHaveBeenCalledWith('presc-edit-001')
+        expect(screen.getByText(/Ordonnance supprimée avec succès/i)).toBeInTheDocument()
+      })
+    })
+  })
 })
+

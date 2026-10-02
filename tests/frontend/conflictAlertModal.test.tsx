@@ -164,7 +164,7 @@ describe('ConflictAlertModal & Conflict Detection UI Integration Tests', () => {
         />
       )
 
-      const forceBtn = screen.getByRole('button', { name: 'Forcer le créneau' })
+      const forceBtn = screen.getByRole('button', { name: /Réserver sur un Fauteuil Libre|Forcer/i })
       fireEvent.click(forceBtn)
 
       expect(onForceSave).toHaveBeenCalledTimes(1)
@@ -303,6 +303,60 @@ describe('ConflictAlertModal & Conflict Detection UI Integration Tests', () => {
 
       // Success info toast shown
       expect(screen.getByText('Créneau alternatif appliqué avec succès !')).toBeInTheDocument()
+    })
+
+    it('opens NewPatientModal when clicking "+ Nouveau Patient" and auto-selects newly created patient', async () => {
+      const onClose = vi.fn()
+      const onSuccess = vi.fn()
+
+      window.api.savePatient = vi.fn().mockImplementation((pat) =>
+        Promise.resolve({
+          id: 'pat-quick-888',
+          patientNumber: 'DZ-2026-0888',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          ...pat
+        })
+      )
+
+      render(
+        <ToastProvider>
+          <ToastContainer />
+          <NewAppointmentDrawer
+            initialDate={`${futureIsoDate}T14:00`}
+            onClose={onClose}
+            onSuccess={onSuccess}
+          />
+        </ToastProvider>
+      )
+
+      // Button "+ Nouveau Patient" must be rendered
+      const newPatientBtn = screen.getByRole('button', { name: /\+ Nouveau Patient/i })
+      expect(newPatientBtn).toBeInTheDocument()
+
+      // Click button
+      fireEvent.click(newPatientBtn)
+
+      // Modal "Créer un Dossier Patient" opens
+      expect(screen.getByText('Créer un Dossier Patient')).toBeInTheDocument()
+
+      // Fill in First Name and Last Name and Phone
+      fireEvent.change(screen.getByPlaceholderText('Ex: Amine'), { target: { value: 'Karim' } })
+      fireEvent.change(screen.getByPlaceholderText('Ex: Mansouri'), { target: { value: 'Saadi' } })
+      fireEvent.change(screen.getByPlaceholderText('0550123456'), { target: { value: '0770998877' } })
+
+      // Submit creation form
+      const submitPatientBtn = screen.getByRole('button', { name: /Enregistrer le Patient/i })
+      fireEvent.click(submitPatientBtn)
+
+      // Wait for modal to close and new patient to be selected in drawer
+      await waitFor(() => {
+        expect(screen.queryByText('Créer un Dossier Patient')).not.toBeInTheDocument()
+      })
+
+      // The new patient's name must be selected and displayed in the drawer
+      expect(screen.getByText('Karim Saadi')).toBeInTheDocument()
+      expect(screen.getByText(/DZ-2026-0888/)).toBeInTheDocument()
     })
   })
 })

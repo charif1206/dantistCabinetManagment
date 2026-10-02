@@ -40,11 +40,19 @@ export const billingService = {
     }
   ): Promise<Invoice> {
     const api = getElectronApi()
-    return await api.saveInvoice(invoice)
+    const result = await api.saveInvoice(invoice)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('billing:updated'))
+    }
+    return result
   },
 
   async recordPayment(payment: Omit<Payment, 'id' | 'createdAt'>): Promise<Payment> {
     const api = getElectronApi()
-    return await api.recordPayment(payment)
+    const result = await api.recordPayment(payment)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('billing:updated'))
+    }
+    return result
   }
 }

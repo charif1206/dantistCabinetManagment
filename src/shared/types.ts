@@ -169,6 +169,7 @@ export interface Prescription {
 
 export interface Payment {
   id: string
+  receiptNumber?: string
   patientId: string
   invoiceId?: string
   amount: number // in DA
@@ -231,6 +232,7 @@ export interface DashboardStats {
   totalPatientsCount: number
   todayRevenueDA: number // Algerian Dinars
   totalDebtsDA: number // Algerian Dinars
+  debtorPatientsCount?: number
   pendingSyncCount: number
 }
 
@@ -303,7 +305,8 @@ export interface ProthesisOrder {
   labId: string
   labName: string
   actName: string
-  toothNumber?: number | null // FDI: 11-48 or 51-85
+  toothNumber?: number | null // FDI: 11-48 or 51-85 (main tooth or first tooth)
+  teeth?: string | null // All selected teeth (e.g. "11, 12, 13" for bridges)
   shade: string // Vita A1-D4, 3D Master, Bleach
   nature: ProthesisNature
   status: ProthesisOrderStatus
@@ -456,6 +459,7 @@ export interface ElectronAPI {
   getPatientById: (id: string) => Promise<Patient | null>
   savePatient: (patient: Omit<Patient, 'id' | 'patientNumber' | 'createdAt' | 'updatedAt' | 'syncStatus'> & { id?: string; patientNumber?: string }) => Promise<Patient>
   deletePatient: (id: string) => Promise<boolean> // Soft delete
+  permanentDeletePatient: (id: string) => Promise<boolean> // Hard delete (permanent)
 
   // Appointments
   getAppointments: (startDate?: string, endDate?: string) => Promise<Appointment[]>
@@ -474,6 +478,7 @@ export interface ElectronAPI {
   saveClinicalNote: (note: Omit<ClinicalNote, 'id' | 'createdAt' | 'updatedAt'>) => Promise<ClinicalNote>
   getPrescriptions: (patientId: string) => Promise<Prescription[]>
   savePrescription: (prescription: Omit<Prescription, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<Prescription>
+  deletePrescription: (id: string) => Promise<boolean>
 
   // Drugs Catalog & Prescription Templates (Prompt 4)
   getDrugsCatalog: (search?: string, category?: string) => Promise<DrugItem[]>
@@ -494,6 +499,7 @@ export interface ElectronAPI {
 
   // Stats
   getDashboardStats: () => Promise<DashboardStats>
+  onDashboardStatsChanged?: (callback: () => void) => () => void
 
   // Local Backup & Integrity
   createBackup: (targetDir?: string) => Promise<{ success: boolean; backupPath: string; sizeBytes: number; error?: string }>
@@ -556,6 +562,29 @@ export interface ElectronAPI {
   getPeakHoursDistribution: () => Promise<PeakHourCell[]>
   getChronicLatePatients: () => Promise<ChronicLatePatient[]>
   getSpecialtyDistribution: () => Promise<SpecialtyDistribution[]>
+
+  // 8. Patient Radiographies & Medical Imaging (Prompt 8)
+  getPatientRadios: (patientId: string) => Promise<PatientRadio[]>
+  savePatientRadio: (radio: Omit<PatientRadio, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Promise<PatientRadio>
+  deletePatientRadio: (id: string, patientId?: string) => Promise<boolean>
+}
+
+// 8. Patient Radiographies Interfaces (Prompt 8)
+export type RadioType = 'Panoramique' | 'Rétro-alvéolaire' | 'Scanner 3D' | 'Téléradiographie' | 'Bitewing'
+
+export interface PatientRadio {
+  id: string
+  patientId: string
+  radioType: RadioType
+  toothNumber?: number | null
+  date: string
+  imageData: string
+  fileName?: string | null
+  fileSize?: number | null
+  notes?: string | null
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 // 7. Clinical & Organizational Analytics Interfaces

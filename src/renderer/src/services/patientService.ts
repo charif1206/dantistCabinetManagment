@@ -24,6 +24,11 @@ export const patientService = {
     return await api.deletePatient(id)
   },
 
+  async permanentDeletePatient(id: string): Promise<boolean> {
+    const api = getElectronApi()
+    return await api.permanentDeletePatient(id)
+  },
+
   async getMedicalHistory(patientId: string): Promise<MedicalAntecedentsRecord | null> {
     const api = getElectronApi()
     return await api.getPatientMedicalHistory(patientId)

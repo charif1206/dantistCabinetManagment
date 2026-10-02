@@ -6,6 +6,7 @@ import { waitingRoomService } from '../../services/waitingRoomService'
 import { validateFutureDateTime } from '../../utils/validators'
 import { useToast } from '../../context/ToastContext'
 import ConflictAlertModal from './ConflictAlertModal'
+import { NewPatientModal } from '../patients/NewPatientModal'
 
 interface NewAppointmentDrawerProps {
   initialDate?: string
@@ -28,6 +29,7 @@ export default function NewAppointmentDrawer({
 
   const [patients, setPatients] = useState<Patient[]>([])
   const [selectedPatientId, setSelectedPatientId] = useState<string>('')
+  const [showNewPatientModal, setShowNewPatientModal] = useState<boolean>(false)
   const [patientSearch, setPatientSearch] = useState<string>('')
   const [manualName, setManualName] = useState<string>('Yacine Benali')
   const [manualPhone, setManualPhone] = useState<string>('0555123456')
@@ -226,9 +228,19 @@ export default function NewAppointmentDrawer({
         <form onSubmit={handleValidateAndSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
           {/* Patient Selection */}
           <div>
-            <label className="block text-xs font-bold text-on-surface uppercase tracking-wider mb-1">
-              Patient <span className="text-error">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-on-surface uppercase tracking-wider">
+                Patient <span className="text-error">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowNewPatientModal(true)}
+                className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-primary/90 bg-primary/10 hover:bg-primary/20 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
+              >
+                <span className="material-symbols-outlined text-sm">person_add</span>
+                <span>+ Nouveau Patient</span>
+              </button>
+            </div>
             <div className="relative mb-2">
               <input
                 type="text"
@@ -510,6 +522,27 @@ export default function NewAppointmentDrawer({
             setDateTime(suggestedIso)
             setConflictingAppointment(null)
             showToast('Créneau alternatif appliqué avec succès !', 'info')
+          }}
+        />
+      )}
+
+      {/* Quick New Patient Modal from within Appointment Drawer */}
+      {showNewPatientModal && (
+        <NewPatientModal
+          isOpen={showNewPatientModal}
+          onClose={() => setShowNewPatientModal(false)}
+          existingPatients={patients}
+          skipNavigation={true}
+          onSuccess={(newPatient) => {
+            setPatients((prev) => [newPatient, ...prev])
+            setSelectedPatientId(newPatient.id)
+            setPatientSearch('')
+            setPatientError('')
+            setShowNewPatientModal(false)
+            showToast(
+              `Patient ${newPatient.firstName} ${newPatient.lastName} créé et sélectionné pour ce rendez-vous !`,
+              'success'
+            )
           }}
         />
       )}

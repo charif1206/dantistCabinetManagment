@@ -38,6 +38,7 @@ const api: ElectronAPI = {
   savePatient: (patient: Omit<Patient, 'id' | 'patientNumber' | 'createdAt' | 'updatedAt' | 'syncStatus'> & { id?: string; patientNumber?: string }) =>
     ipcRenderer.invoke('patients:save', patient),
   deletePatient: (id: string) => ipcRenderer.invoke('patients:delete', id),
+  permanentDeletePatient: (id: string) => ipcRenderer.invoke('patients:permanentDelete', id),
 
   // Appointments
   getAppointments: (startDate?: string, endDate?: string) =>
@@ -63,6 +64,7 @@ const api: ElectronAPI = {
   getPrescriptions: (patientId: string) => ipcRenderer.invoke('prescriptions:getAll', patientId),
   savePrescription: (prescription: Omit<Prescription, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) =>
     ipcRenderer.invoke('prescriptions:save', prescription),
+  deletePrescription: (id: string) => ipcRenderer.invoke('prescriptions:delete', id),
 
   // Drugs Catalog & Prescription Templates (Prompt 4)
   getDrugsCatalog: (search?: string, category?: string) =>
@@ -98,6 +100,13 @@ const api: ElectronAPI = {
 
   // Stats
   getDashboardStats: () => ipcRenderer.invoke('dashboard:getStats'),
+  onDashboardStatsChanged: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('dashboard:statsUpdated', handler)
+    return () => {
+      ipcRenderer.removeListener('dashboard:statsUpdated', handler)
+    }
+  },
 
   // Local Backup & Integrity
   createBackup: (targetDir?: string) => ipcRenderer.invoke('backup:create', targetDir),
@@ -157,7 +166,12 @@ const api: ElectronAPI = {
     ipcRenderer.invoke('analytics:getOverview', startDate, endDate),
   getPeakHoursDistribution: () => ipcRenderer.invoke('analytics:getPeakHours'),
   getChronicLatePatients: () => ipcRenderer.invoke('analytics:getChronicLate'),
-  getSpecialtyDistribution: () => ipcRenderer.invoke('analytics:getSpecialtyDistribution')
+  getSpecialtyDistribution: () => ipcRenderer.invoke('analytics:getSpecialtyDistribution'),
+
+  // 8. Patient Radiographies & Medical Imaging (Prompt 8)
+  getPatientRadios: (patientId: string) => ipcRenderer.invoke('radios:getAll', patientId),
+  savePatientRadio: (radio) => ipcRenderer.invoke('radios:save', radio),
+  deletePatientRadio: (id: string) => ipcRenderer.invoke('radios:delete', id)
 }
 
 // Expose strictly via contextBridge

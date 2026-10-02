@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS payments (
   amount REAL NOT NULL DEFAULT 0.0, -- DA
   date TEXT NOT NULL,
   method TEXT NOT NULL DEFAULT 'CASH', -- 'CASH', 'CHECK', 'TRANSFER'
+  receiptNumber TEXT,
   notes TEXT,
   createdAt TEXT NOT NULL,
   deletedAt TEXT,
@@ -269,7 +270,8 @@ CREATE TABLE IF NOT EXISTS prothesis_orders (
   labId TEXT NOT NULL,
   labName TEXT NOT NULL,
   actName TEXT NOT NULL,
-  toothNumber INTEGER, -- FDI: 11-48 or 51-85
+  toothNumber INTEGER, -- FDI: 11-48 or 51-85 (main tooth)
+  teeth TEXT, -- FDI teeth list (e.g. '11, 12, 13')
   shade TEXT NOT NULL, -- Vita Classical (A1-D4), 3D Master, Bleach
   nature TEXT NOT NULL, -- 'ZIRCONE', 'CERAMO_METALLIQUE', 'EMAX', 'STELLITE', 'RESINE_COMPLETE', etc.
   status TEXT NOT NULL DEFAULT 'PREPARATION', -- 'PREPARATION', 'SENT', 'RECEIVED', 'FITTING', 'DELIVERED', 'REJECTED'
@@ -411,3 +413,23 @@ CREATE TABLE IF NOT EXISTS waiting_room_entries (
 
 CREATE INDEX IF NOT EXISTS idx_waiting_status ON waiting_room_entries(status, arrivalTime);
 CREATE INDEX IF NOT EXISTS idx_waiting_patient ON waiting_room_entries(patientId);
+
+-- 22. Patient Radiographies & Imaging (صور الأشعة والـ Radios في ملف المريض)
+CREATE TABLE IF NOT EXISTS patient_radios (
+  id TEXT PRIMARY KEY,
+  patientId TEXT NOT NULL,
+  radioType TEXT NOT NULL, -- 'Panoramique', 'Rétro-alvéolaire', 'Scanner 3D', 'Téléradiographie', 'Bitewing'
+  toothNumber INTEGER, -- optional tooth number (FDI 11..48) or null
+  date TEXT NOT NULL,
+  imageData TEXT NOT NULL, -- base64 data URL or file path
+  fileName TEXT,
+  fileSize INTEGER,
+  notes TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  deletedAt TEXT,
+  FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_patient_radios_patient ON patient_radios(patientId);
+CREATE INDEX IF NOT EXISTS idx_patient_radios_date ON patient_radios(date);

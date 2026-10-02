@@ -52,9 +52,15 @@ export default function PrintablePatientFile({
 
   const calculateAge = (dob?: string): string => {
     if (!dob) return ''
-    const birthYear = new Date(dob).getFullYear()
-    const currentYear = new Date().getFullYear()
-    return `${currentYear - birthYear} ans`
+    const birthDate = new Date(dob)
+    if (isNaN(birthDate.getTime())) return ''
+    const today = new Date()
+    let age = today.getFullYear() - birthDate.getFullYear()
+    const monthDiff = today.getMonth() - birthDate.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--
+    }
+    return `${Math.max(0, age)} ans`
   }
 
   const totalActsDA = treatments.reduce((acc, t) => acc + (t.price || 0), 0)
@@ -130,16 +136,19 @@ export default function PrintablePatientFile({
           <div className="border-b-2 border-slate-800 pb-4 flex justify-between items-start">
             <div>
               <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase">
-                Dr. Mohamed Amrani
+                Dr Mohamed Amrani - Chirurgien-Dentiste
               </h1>
               <p className="text-xs font-bold text-secondary uppercase tracking-wider mt-0.5">
-                Chirurgien-Dentiste · Spécialiste en Soins & Prothèses Dentaires
+                Cabinet Dentaire Médico-Chirurgical DentaFlow
+              </p>
+              <p className="text-[11px] font-semibold text-slate-700 mt-0.5">
+                N° Ordre des Dentistes: 16/XXXX
               </p>
               <p className="text-[11px] text-slate-600 mt-1">
-                Cabinet Médico-Chirurgical Dentaire · Alger, Algérie
+                14, Boulevard Colonel Amirouche, Alger Centre, 16000 Alger
               </p>
               <p className="text-[11px] text-slate-600">
-                Tél : <span className="font-semibold">0550 12 34 56</span> /{' '}
+                Tél : <span className="font-semibold">0550 12 34 56</span> · Fixe :{' '}
                 <span className="font-semibold">021 65 43 21</span>
               </p>
             </div>
@@ -168,9 +177,13 @@ export default function PrintablePatientFile({
                 <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-800">
                   N° {patient.patientNumber}
                 </span>
-                {patient.bloodGroup && (
+                {patient.bloodGroup ? (
                   <span className="text-xs font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">
-                    Groupe : {patient.bloodGroup}
+                    Groupe Sanguin : {patient.bloodGroup}
+                  </span>
+                ) : (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded bg-slate-200 text-slate-600">
+                    Groupe : Non renseigné
                   </span>
                 )}
               </div>
@@ -182,9 +195,9 @@ export default function PrintablePatientFile({
                 <span className="font-mono font-bold text-slate-800">{patient.phone}</span>
               </div>
               <div>
-                <span className="text-slate-400 block text-[10px] font-semibold">Date de Naissance</span>
+                <span className="text-slate-400 block text-[10px] font-semibold">Date de Naissance / Âge</span>
                 <span className="text-slate-800 font-medium">
-                  {patient.dateOfBirth || '—'} {patient.dateOfBirth && `(${calculateAge(patient.dateOfBirth)})`}
+                  {patient.dateOfBirth || '—'} {patient.dateOfBirth && <strong className="text-slate-900 font-bold ml-1">({calculateAge(patient.dateOfBirth)})</strong>}
                 </span>
               </div>
               <div>
@@ -369,15 +382,30 @@ export default function PrintablePatientFile({
             </div>
           )}
 
-          {/* Footer & Doctor Stamp */}
-          <div className="pt-6 border-t-2 border-slate-200 flex justify-between items-end text-xs text-slate-500">
-            <div>
-              <p className="font-semibold text-slate-700">Document médical confidentiel</p>
-              <p className="text-[10px] text-slate-400">Édité le {new Date().toLocaleDateString('fr-FR')} via DentaFlow Algérie</p>
+          {/* Footer & Legal Medical Secret & Cachet/Signature */}
+          <div className="pt-6 border-t-2 border-slate-300 mt-auto flex flex-col sm:flex-row justify-between items-end gap-6 text-xs text-slate-500">
+            <div className="max-w-md space-y-1.5">
+              <p className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+                <span className="material-symbols-outlined text-sm text-slate-600">lock</span>
+                <span>Document Médical Confidentiel · Secret Médical Légal</span>
+              </p>
+              <p className="text-[10px] text-slate-600 leading-relaxed">
+                Ce dossier médical et son contenu sont strictement protégés par le secret professionnel et légal médical (Article 206 du Code de Déontologie Médicale). Tout usage ou divulgation non autorisée est passible de sanctions légales.
+              </p>
+              <p className="text-[10px] text-slate-400 font-mono">
+                Édité le {new Date().toLocaleDateString('fr-FR')} via DentaFlow · Système Dentaire Médico-Chirurgical
+              </p>
             </div>
-            <div className="text-center">
-              <p className="text-[11px] font-bold text-slate-700 mb-8">Cachet et Signature du Praticien</p>
-              <div className="w-36 border-b border-dashed border-slate-400 mx-auto" />
+
+            {/* Zone Cachet et Signature */}
+            <div className="text-center border-2 border-dashed border-slate-300 rounded-xl p-4 min-w-[220px] bg-slate-50/50">
+              <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block mb-1">
+                Zone Cachet et Signature
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium block mb-12">
+                Dr Mohamed Amrani · Chirurgien-Dentiste
+              </span>
+              <div className="w-36 border-b border-slate-400 mx-auto" />
             </div>
           </div>
         </div>

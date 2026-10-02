@@ -97,9 +97,15 @@ export const ClinicalAnalyticsView: React.FC = () => {
       case 'ENDODONTIE':
         return 'bg-amber-500'
       case 'PARODONTOLOGIE':
+      case 'PARODONTIE':
         return 'bg-emerald-500'
-      default:
+      case 'CONSULTATION_IMAGERIE':
         return 'bg-indigo-500'
+      case 'SOINS':
+      case 'SOINS_CONSERVATEURS':
+        return 'bg-sky-500'
+      default:
+        return 'bg-slate-500'
     }
   }
 

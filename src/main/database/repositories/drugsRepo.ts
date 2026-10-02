@@ -140,4 +140,15 @@ export class DrugsRepository {
     const result = stmt.run(id)
     return result.changes > 0
   }
+
+  // Prescriptions Management
+  deletePrescription(id: string): boolean {
+    const tx = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM prescription_items WHERE prescriptionId = ?').run(id)
+      const result = this.db.prepare('DELETE FROM prescriptions WHERE id = ?').run(id)
+      return result.changes > 0
+    })
+    return tx()
+  }
 }
+

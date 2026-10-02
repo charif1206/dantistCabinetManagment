@@ -104,6 +104,13 @@ export function migrateExistingTables(db: Database.Database): void {
       }
     }
 
+    if (tableExists('payments')) {
+      const cols = (db.pragma('table_info(payments)') as { name: string }[]).map((c) => c.name)
+      if (!cols.includes('receiptNumber')) {
+        db.exec('ALTER TABLE payments ADD COLUMN receiptNumber TEXT;')
+      }
+    }
+
     // 12. Drugs Catalog (Prompt 4)
     if (!tableExists('drugs_catalog')) {
       db.exec(`
@@ -199,6 +206,7 @@ export function migrateExistingTables(db: Database.Database): void {
     } else {
       const cols = (db.pragma('table_info(prothesis_orders)') as { name: string }[]).map((c) => c.name)
       if (!cols.includes('toothNumber')) db.exec('ALTER TABLE prothesis_orders ADD COLUMN toothNumber INTEGER;')
+      if (!cols.includes('teeth')) db.exec('ALTER TABLE prothesis_orders ADD COLUMN teeth TEXT;')
       if (!cols.includes('shade')) db.exec("ALTER TABLE prothesis_orders ADD COLUMN shade TEXT DEFAULT 'A2';")
       if (!cols.includes('nature')) db.exec("ALTER TABLE prothesis_orders ADD COLUMN nature TEXT DEFAULT 'ZIRCONE';")
       if (!cols.includes('labCostDA')) db.exec('ALTER TABLE prothesis_orders ADD COLUMN labCostDA REAL NOT NULL DEFAULT 0.0;')
@@ -342,6 +350,29 @@ export function migrateExistingTables(db: Database.Database): void {
         );
         CREATE INDEX IF NOT EXISTS idx_waiting_status ON waiting_room_entries(status, arrivalTime);
         CREATE INDEX IF NOT EXISTS idx_waiting_patient ON waiting_room_entries(patientId);
+      `)
+    }
+
+    // 22. Patient Radiographies & Imaging (Prompt 8)
+    if (!tableExists('patient_radios')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS patient_radios (
+          id TEXT PRIMARY KEY,
+          patientId TEXT NOT NULL,
+          radioType TEXT NOT NULL,
+          toothNumber INTEGER,
+          date TEXT NOT NULL,
+          imageData TEXT NOT NULL,
+          fileName TEXT,
+          fileSize INTEGER,
+          notes TEXT,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          deletedAt TEXT,
+          FOREIGN KEY (patientId) REFERENCES patients(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_patient_radios_patient ON patient_radios(patientId);
+        CREATE INDEX IF NOT EXISTS idx_patient_radios_date ON patient_radios(date);
       `)
     }
 

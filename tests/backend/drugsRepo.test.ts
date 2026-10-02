@@ -234,5 +234,45 @@ describe('DrugsRepository & Algerian Dental Pharmacopeia - SQLite Integration', 
       expect(success).toBe(true)
       expect(drugsRepo.getTemplateById(template.id)).toBeNull()
     })
+
+    it('deletes an entire prescription and its child items permanently from SQLite', () => {
+      // Find an existing patient for foreign key integrity
+      const existingPatient = db.prepare('SELECT id FROM patients LIMIT 1').get() as { id: string }
+      const patientId = existingPatient ? existingPatient.id : 'pat-del-temp'
+
+      if (!existingPatient) {
+        db.prepare(`
+          INSERT INTO patients (id, patientNumber, firstName, lastName, phone, createdAt, updatedAt)
+          VALUES ('pat-del-temp', 'DZ-TEMP-01', 'Test', 'Patient', '0555000000', '2026-10-02', '2026-10-02')
+        `).run()
+      }
+
+      // Insert a dummy prescription directly
+      db.prepare(`
+        INSERT INTO prescriptions (id, patientId, patientName, dentistName, date, createdAt, updatedAt)
+        VALUES ('presc-del-test', ?, 'Test Patient', 'Dr. Amrani', '2026-10-02', '2026-10-02', '2026-10-02')
+      `).run(patientId)
+
+      db.prepare(`
+        INSERT INTO prescription_items (id, prescriptionId, medicineName, dosage, form, instructions)
+        VALUES ('item-del-test', 'presc-del-test', 'Amoxicilline', '1g', 'Comprimé', '1 cp matin et soir')
+      `).run()
+
+      // Verify insertion
+      const prescBefore = db.prepare('SELECT * FROM prescriptions WHERE id = ?').get('presc-del-test')
+      const itemBefore = db.prepare('SELECT * FROM prescription_items WHERE prescriptionId = ?').get('presc-del-test')
+      expect(prescBefore).toBeDefined()
+      expect(itemBefore).toBeDefined()
+
+      // Delete via repository
+      const deleted = drugsRepo.deletePrescription('presc-del-test')
+      expect(deleted).toBe(true)
+
+      // Verify permanent removal
+      const prescAfter = db.prepare('SELECT * FROM prescriptions WHERE id = ?').get('presc-del-test')
+      const itemAfter = db.prepare('SELECT * FROM prescription_items WHERE prescriptionId = ?').get('presc-del-test')
+      expect(prescAfter).toBeUndefined()
+      expect(itemAfter).toBeUndefined()
+    })
   })
 })

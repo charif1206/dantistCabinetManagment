@@ -14,6 +14,25 @@ interface EditPatientModalProps {
   existingPatients?: Patient[]
 }
 
+function cleanPhone(phone: string): string {
+  let p = (phone || '').trim().replace(/[\s\-_.()\u00A0]/g, '')
+  if (p.startsWith('+213')) p = '0' + p.slice(4)
+  else if (p.startsWith('00213')) p = '0' + p.slice(5)
+  else if (p.startsWith('213') && p.length === 12) p = '0' + p.slice(3)
+  return p
+}
+
+function matchWilaya(val?: string): string {
+  if (!val) return '16 - Alger'
+  const trimmed = val.trim()
+  const direct = ALGERIAN_WILAYAS.find(
+    (w) => w.name.toLowerCase() === trimmed.toLowerCase() || w.code === trimmed
+  )
+  if (direct) return direct.name
+  const partial = ALGERIAN_WILAYAS.find((w) => w.name.toLowerCase().includes(trimmed.toLowerCase()))
+  return partial ? partial.name : trimmed
+}
+
 export const EditPatientModal: React.FC<EditPatientModalProps> = ({
   isOpen,
   patient,
@@ -32,7 +51,8 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({
     email: patient?.email || '',
     dateOfBirth: patient?.dateOfBirth || '',
     gender: (patient?.gender as 'M' | 'F') || 'M',
-    wilaya: patient?.wilaya || '16 - Alger',
+    address: patient?.address || '',
+    wilaya: matchWilaya(patient?.wilaya),
     medicalAlerts: patient?.medicalAlerts || '',
     bloodGroup: patient?.bloodGroup || 'A+',
     notes: patient?.notes || ''
@@ -54,7 +74,8 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({
         email: patient.email || '',
         dateOfBirth: patient.dateOfBirth || '',
         gender: (patient.gender as 'M' | 'F') || 'M',
-        wilaya: patient.wilaya || '16 - Alger',
+        address: patient.address || '',
+        wilaya: matchWilaya(patient.wilaya),
         medicalAlerts: patient.medicalAlerts || '',
         bloodGroup: patient.bloodGroup || 'A+',
         notes: patient.notes || ''
@@ -66,7 +87,12 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({
       if (existingPatients && existingPatients.length > 0) {
         setAllPatients(existingPatients)
       } else {
-        patientService.getPatients().then((pats) => setAllPatients(pats || [])).catch(() => {})
+        patientService
+          .getPatients()
+          .then((pats) => {
+            if (pats && pats.length > 0) setAllPatients(pats)
+          })
+          .catch(() => {})
       }
     }
   }, [isOpen, patient, existingPatients])
@@ -92,12 +118,12 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({
           )
         }
         // Vérification doublon hors patient courant
-        const cleaned = value.trim().replace(/[\s\-_.]/g, '')
+        const cleaned = cleanPhone(value)
         const duplicate = allPatients.find(
-          (p) => p.id !== patient.id && p.phone && p.phone.trim().replace(/[\s\-_.]/g, '') === cleaned
+          (p) => p.id !== patient.id && p.phone && cleanPhone(p.phone) === cleaned
         )
         if (duplicate) {
-          return 'Ce numéro de téléphone existe déjà pour un autre patient.'
+          return `Ce numéro de téléphone est déjà associé au patient ${duplicate.firstName} ${duplicate.lastName} (Dossier N° ${duplicate.patientNumber}).`
         }
         return ''
       }
@@ -355,22 +381,37 @@ export const EditPatientModal: React.FC<EditPatientModalProps> = ({
             </div>
           </div>
 
-          {/* Wilaya (58 Wilayas) */}
-          <div>
-            <label className="block text-xs font-semibold text-on-surface mb-1">
-              Wilaya de Résidence (Algérie)
-            </label>
-            <select
-              value={formData.wilaya}
-              onChange={(e) => handleChange('wilaya', e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-outline-variant bg-surface text-sm focus:ring-2 focus:ring-secondary/40 focus:border-secondary"
-            >
-              {ALGERIAN_WILAYAS.map((w) => (
-                <option key={w.code} value={w.name}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
+          {/* Wilaya & Adresse */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-on-surface mb-1">
+                Wilaya de Résidence (Algérie)
+              </label>
+              <select
+                value={formData.wilaya}
+                onChange={(e) => handleChange('wilaya', e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-outline-variant bg-surface text-sm focus:ring-2 focus:ring-secondary/40 focus:border-secondary"
+              >
+                {ALGERIAN_WILAYAS.map((w) => (
+                  <option key={w.code} value={w.name}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-on-surface mb-1">
+                Adresse / Commune
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: 14 Rue Didouche Mourad"
+                value={formData.address}
+                onChange={(e) => handleChange('address', e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-outline-variant bg-surface text-sm focus:ring-2 focus:ring-secondary/40 focus:border-secondary"
+              />
+            </div>
           </div>
 
           {/* Alertes Médicales & Allergies */}

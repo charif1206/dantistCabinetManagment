@@ -8,6 +8,7 @@ import PrintablePrescription from './PrintablePrescription'
 interface PrescriptionBuilderProps {
   patient: Patient
   dentistName?: string
+  onPrescriptionUpdated?: () => void
 }
 
 const DRUG_CATEGORIES = [
@@ -33,7 +34,8 @@ const DRUG_FORMS = [
 
 export default function PrescriptionBuilder({
   patient,
-  dentistName = 'Dr. Mohamed Amrani'
+  dentistName = 'Dr. Mohamed Amrani',
+  onPrescriptionUpdated
 }: PrescriptionBuilderProps): JSX.Element {
   const { showToast } = useToast()
 
@@ -41,6 +43,11 @@ export default function PrescriptionBuilder({
   const [isLoading, setIsLoading] = useState(true)
   const [showNewModal, setShowNewModal] = useState(false)
   const [previewPrescription, setPreviewPrescription] = useState<Prescription | null>(null)
+
+  // Edit & Delete Prescription State
+  const [editingPrescriptionId, setEditingPrescriptionId] = useState<string | null>(null)
+  const [prescriptionToDelete, setPrescriptionToDelete] = useState<Prescription | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Catalog & Templates State
   const [catalogDrugs, setCatalogDrugs] = useState<DrugItem[]>([])
@@ -347,7 +354,56 @@ export default function PrescriptionBuilder({
     }
   }
 
-  // Save & Print final prescription
+  // Open New Prescription Modal
+  const handleOpenNewPrescription = (): void => {
+    setEditingPrescriptionId(null)
+    setDate(new Date().toISOString().split('T')[0])
+    setNotes("Traitement d'urgence - Éviter la consommation d'alcool pendant la prise")
+    setItems([])
+    setSelectedCatalogDrug(null)
+    setSelectedTemplateId('')
+    setShowNewModal(true)
+  }
+
+  // Open Edit Prescription Modal with prefilled data
+  const handleEditPrescription = (prescription: Prescription): void => {
+    setEditingPrescriptionId(prescription.id)
+    setDate(prescription.date || new Date().toISOString().split('T')[0])
+    setNotes(prescription.notes || '')
+    setItems(
+      prescription.items && prescription.items.length > 0
+        ? prescription.items.map((it) => ({ ...it }))
+        : []
+    )
+    setSelectedCatalogDrug(null)
+    setSelectedTemplateId('')
+    setShowNewModal(true)
+  }
+
+  // Request Delete Prescription Modal
+  const handleRequestDelete = (prescription: Prescription): void => {
+    setPrescriptionToDelete(prescription)
+  }
+
+  // Confirm Delete Prescription
+  const handleConfirmDelete = async (): Promise<void> => {
+    if (!prescriptionToDelete) return
+    setIsDeleting(true)
+    try {
+      await drugService.deletePrescription(prescriptionToDelete.id)
+      showToast('Ordonnance supprimée avec succès !', 'success')
+      setPrescriptionToDelete(null)
+      await loadPrescriptions()
+      onPrescriptionUpdated?.()
+    } catch (err) {
+      console.error('Failed to delete prescription:', err)
+      showToast("Erreur lors de la suppression de l'ordonnance", 'error')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // Save & Print final prescription (Create or Update)
   const handleSaveAndPrint = async (): Promise<void> => {
     if (items.length === 0) {
       showToast('Veuillez ajouter au moins un médicament à la prescription', 'warning')
@@ -356,7 +412,9 @@ export default function PrescriptionBuilder({
 
     setIsSaving(true)
     try {
+      const isEditing = Boolean(editingPrescriptionId)
       const saved = await clinicalService.savePrescription({
+        id: editingPrescriptionId || undefined,
         patientId: patient.id,
         patientName: `${patient.firstName} ${patient.lastName}`,
         dentistName,
@@ -365,9 +423,14 @@ export default function PrescriptionBuilder({
         items
       })
 
-      showToast('Ordonnance enregistrée avec succès !', 'success')
+      showToast(
+        isEditing ? 'Ordonnance modifiée avec succès !' : 'Ordonnance enregistrée avec succès !',
+        'success'
+      )
       await loadPrescriptions()
+      onPrescriptionUpdated?.()
       setShowNewModal(false)
+      setEditingPrescriptionId(null)
       setItems([])
       setNotes('')
       setSelectedTemplateId('')
@@ -398,12 +461,7 @@ export default function PrescriptionBuilder({
         </div>
 
         <button
-          onClick={() => {
-            setItems([])
-            setSelectedCatalogDrug(null)
-            setSelectedTemplateId('')
-            setShowNewModal(true)
-          }}
+          onClick={handleOpenNewPrescription}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary-container hover:bg-on-secondary-fixed-variant text-on-primary text-xs font-semibold shadow-xs transition-all cursor-pointer shrink-0"
         >
           <span className="material-symbols-outlined text-lg">add</span>
@@ -422,10 +480,7 @@ export default function PrescriptionBuilder({
           <span className="material-symbols-outlined text-4xl text-outline">clinical_notes</span>
           <p className="font-medium">Aucune ordonnance rédigée pour ce patient.</p>
           <button
-            onClick={() => {
-              setItems([])
-              setShowNewModal(true)
-            }}
+            onClick={handleOpenNewPrescription}
             className="text-secondary font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
           >
             <span>Rédiger la première ordonnance</span>
@@ -439,7 +494,7 @@ export default function PrescriptionBuilder({
               key={p.id}
               className="bg-surface-container-lowest border border-outline-variant/60 rounded-2xl p-5 shadow-xs hover:border-secondary/50 transition-all space-y-4"
             >
-              <div className="flex justify-between items-center pb-3 border-b border-outline-variant/30">
+              <div className="flex justify-between items-center pb-3 border-b border-outline-variant/30 flex-wrap gap-2">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-secondary-fixed text-secondary flex items-center justify-center font-black text-sm shadow-xs">
                     Rx
@@ -454,13 +509,34 @@ export default function PrescriptionBuilder({
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setPreviewPrescription(p)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-outline-variant/60 hover:bg-surface-container text-xs font-semibold text-on-surface transition-colors cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-base">print</span>
-                  <span>Imprimer / Visualiser</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleEditPrescription(p)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-secondary/40 hover:bg-secondary/10 text-xs font-semibold text-secondary transition-colors cursor-pointer"
+                    title="Modifier l'ordonnance"
+                  >
+                    <span className="material-symbols-outlined text-base">edit</span>
+                    <span>Modifier</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleRequestDelete(p)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-xs font-semibold text-rose-600 transition-colors cursor-pointer"
+                    title="Supprimer l'ordonnance"
+                  >
+                    <span className="material-symbols-outlined text-base">delete</span>
+                    <span>Supprimer</span>
+                  </button>
+
+                  <button
+                    onClick={() => setPreviewPrescription(p)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-outline-variant/60 hover:bg-surface-container text-xs font-semibold text-on-surface transition-colors cursor-pointer"
+                    title="Imprimer / Visualiser"
+                  >
+                    <span className="material-symbols-outlined text-base">print</span>
+                    <span>Imprimer</span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
@@ -504,7 +580,7 @@ export default function PrescriptionBuilder({
                 </div>
                 <div>
                   <h3 className="font-bold text-base text-on-surface">
-                    Rédiger une Ordonnance — {patient.firstName} {patient.lastName}
+                    {editingPrescriptionId ? "Modifier l'Ordonnance" : "Rédiger une Ordonnance"} — {patient.firstName} {patient.lastName}
                   </h3>
                   <p className="text-xs text-on-surface-variant">
                     Dossier N° {patient.patientNumber} · {dentistName}
@@ -1030,8 +1106,16 @@ export default function PrescriptionBuilder({
                   onClick={handleSaveAndPrint}
                   className="px-5 py-2 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary text-xs font-bold shadow-xs transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
-                  <span className="material-symbols-outlined text-base">print</span>
-                  <span>{isSaving ? 'Enregistrement...' : 'Enregistrer & Imprimer'}</span>
+                  <span className="material-symbols-outlined text-base">
+                    {editingPrescriptionId ? 'save' : 'print'}
+                  </span>
+                  <span>
+                    {isSaving
+                      ? 'Enregistrement...'
+                      : editingPrescriptionId
+                        ? 'Enregistrer les modifications'
+                        : 'Enregistrer & Imprimer'}
+                  </span>
                 </button>
               </div>
             </div>
@@ -1098,6 +1182,60 @@ export default function PrescriptionBuilder({
                 className="px-4 py-2 rounded-xl bg-secondary hover:bg-secondary/90 text-on-secondary text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
               >
                 {isSavingTemplate ? 'Enregistrement...' : 'Enregistrer le Modèle'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmation Suppression Ordonnance */}
+      {prescriptionToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-surface-container-lowest rounded-3xl border border-rose-300 shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-xl">delete_forever</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-rose-700">Suppression de l'Ordonnance</h3>
+                <p className="text-xs text-on-surface-variant font-mono">
+                  Date : {prescriptionToDelete.date}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-950 font-medium space-y-1">
+              <p className="font-bold flex items-center gap-1 text-rose-800">
+                <span className="material-symbols-outlined text-sm">warning</span>
+                Attention : Action Irréversible !
+              </p>
+              <p>
+                Êtes-vous sûr de vouloir supprimer cette ordonnance du {prescriptionToDelete.date} ? Cette action est irréversible.
+              </p>
+              {prescriptionToDelete.items && prescriptionToDelete.items.length > 0 && (
+                <div className="pt-1 text-[11px] text-rose-900">
+                  <span className="font-semibold">{prescriptionToDelete.items.length} médicament(s) : </span>
+                  {prescriptionToDelete.items.map((it) => it.medicineName).join(', ')}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-outline-variant/40">
+              <button
+                type="button"
+                onClick={() => setPrescriptionToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-on-surface-variant hover:bg-surface-container transition-colors cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                {isDeleting ? 'Suppression...' : 'Oui, Supprimer'}
               </button>
             </div>
           </div>

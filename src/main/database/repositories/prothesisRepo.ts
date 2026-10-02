@@ -154,6 +154,7 @@ export class ProthesisRepository {
         labName: data.labName,
         actName: data.actName,
         toothNumber: data.toothNumber ?? null,
+        teeth: data.teeth ?? (data.toothNumber ? String(data.toothNumber) : null),
         shade: data.shade,
         nature: data.nature,
         status: data.status || 'PREPARATION',
@@ -172,11 +173,11 @@ export class ProthesisRepository {
       const stmt = this.db.prepare(`
         INSERT INTO prothesis_orders (
           id, orderNumber, patientId, patientName, dentistName, labId, labName, actName,
-          toothNumber, shade, nature, status, sentDate, expectedDate, receivedDate,
+          toothNumber, teeth, shade, nature, status, sentDate, expectedDate, receivedDate,
           deliveryDate, labCostDA, clinicPriceDA, notes, createdAt, updatedAt
         ) VALUES (
           @id, @orderNumber, @patientId, @patientName, @dentistName, @labId, @labName, @actName,
-          @toothNumber, @shade, @nature, @status, @sentDate, @expectedDate, @receivedDate,
+          @toothNumber, @teeth, @shade, @nature, @status, @sentDate, @expectedDate, @receivedDate,
           @deliveryDate, @labCostDA, @clinicPriceDA, @notes, @createdAt, @updatedAt
         )
       `)
@@ -192,6 +193,7 @@ export class ProthesisRepository {
             labName = @labName,
             actName = @actName,
             toothNumber = @toothNumber,
+            teeth = @teeth,
             shade = @shade,
             nature = @nature,
             status = @status,
@@ -214,6 +216,7 @@ export class ProthesisRepository {
         labName: data.labName,
         actName: data.actName,
         toothNumber: data.toothNumber ?? null,
+        teeth: data.teeth ?? (data.toothNumber ? String(data.toothNumber) : null),
         shade: data.shade,
         nature: data.nature,
         status: data.status,

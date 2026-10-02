@@ -158,8 +158,8 @@ describe('Patient Modals & Forms Integration (NewPatientModal & EditPatientModal
       fireEvent.change(phoneInput, { target: { value: '0550112233' } })
       fireEvent.blur(phoneInput)
 
-      // Expect duplicate error message
-      const dupError = await screen.findByText(/Ce numéro de téléphone existe déjà pour un autre patient/i)
+      // Expect contextual duplicate error message
+      const dupError = await screen.findByText(/Ce numéro de téléphone est déjà associé au patient/i)
       expect(dupError).toBeInTheDocument()
 
       // Submit must be blocked
@@ -168,7 +168,7 @@ describe('Patient Modals & Forms Integration (NewPatientModal & EditPatientModal
 
       expect(onCloseMock).not.toHaveBeenCalled()
       const toastAlert = await screen.findByRole('alert')
-      expect(toastAlert).toHaveTextContent(/Ce numéro de téléphone existe déjà/i)
+      expect(toastAlert).toHaveTextContent(/Ce numéro de téléphone est déjà associé au patient/i)
     })
 
     it('accepts valid Algerian patient data, saves patient, displays success toast, closes modal, and navigates to patient file', async () => {
